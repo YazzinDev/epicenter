@@ -64,6 +64,15 @@
 
 import type { Static, TSchema } from 'typebox';
 
+/**
+ * Global symbol brand used to reliably detect actions across package boundaries.
+ *
+ * `Symbol.for()` returns the same reference regardless of which copy of
+ * `@epicenter/workspace` stamps or checks it—critical for monorepo setups
+ * where multiple copies of the package may coexist.
+ */
+export const ACTION_BRAND: unique symbol = Symbol.for('epicenter.action');
+
 // ════════════════════════════════════════════════════════════════════════════
 // ACTION DEFINITION TYPES
 // ════════════════════════════════════════════════════════════════════════════
@@ -141,6 +150,7 @@ type ActionConfig<
  * the handler. Call the action directly instead of accessing `.handler`.
  */
 type ActionMeta<TInput extends TSchema | undefined = TSchema | undefined> = {
+	[ACTION_BRAND]: true;
 	type: 'query' | 'mutation';
 	/** Short, human-readable display name for UI surfaces (e.g. 'Close Tabs'). Falls back to path-derived name if omitted. */
 	title?: string;
@@ -284,6 +294,7 @@ export function defineQuery<TInput extends TSchema, TOutput = unknown>(
 ): Query<TInput, TOutput>;
 export function defineQuery({ handler, ...rest }: ActionConfig): Query {
 	return Object.assign(handler, {
+		[ACTION_BRAND]: true as const,
 		type: 'query' as const,
 		...rest,
 	}) as unknown as Query;
@@ -330,6 +341,7 @@ export function defineMutation<TInput extends TSchema, TOutput = unknown>(
 ): Mutation<TInput, TOutput>;
 export function defineMutation({ handler, ...rest }: ActionConfig): Mutation {
 	return Object.assign(handler, {
+		[ACTION_BRAND]: true as const,
 		type: 'mutation' as const,
 		...rest,
 	}) as unknown as Mutation;
@@ -353,11 +365,7 @@ export function defineMutation({ handler, ...rest }: ActionConfig): Mutation {
  * ```
  */
 export function isAction(value: unknown): value is Action {
-	return (
-		typeof value === 'function' &&
-		'type' in value &&
-		(value.type === 'query' || value.type === 'mutation')
-	);
+	return typeof value === 'function' && ACTION_BRAND in value;
 }
 
 /**
@@ -413,7 +421,7 @@ export function* iterateActions(
 		const currentPath = [...path, key];
 		if (isAction(value)) {
 			yield [value, currentPath];
-		} else {
+		} else if (value != null && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Promise)) {
 			yield* iterateActions(value as Actions, currentPath);
 		}
 	}

@@ -40,6 +40,7 @@
  */
 
 import * as Y from 'yjs';
+import { formatBytes, formatPercent, formatTime } from './helpers.js';
 
 // ============================================================================
 // Configuration
@@ -75,7 +76,7 @@ function createPlainRow(id: string, suffix = ''): PlainRow {
 	};
 }
 
-function createYMapRow(_doc: Y.Doc, id: string, suffix = ''): Y.Map<unknown> {
+function createYMapRow(id: string, suffix = ''): Y.Map<unknown> {
 	const row = new Y.Map<unknown>();
 	row.set('id', id);
 	row.set('name', `User ${id}${suffix}`);
@@ -93,6 +94,11 @@ function getDocSize(doc: Y.Doc): number {
 	return Y.encodeStateAsUpdate(doc).byteLength;
 }
 
+/**
+ * Access Yjs internal store to count structs/tombstones.
+ * WARNING: Relies on Yjs internals (store.clients). Tested with yjs@13.x.
+ * If Yjs changes its internal structure, this will silently break.
+ */
 function countStructs(doc: Y.Doc): {
 	total: number;
 	deleted: number;
@@ -188,14 +194,14 @@ function benchmarkMapPlain(
 	const doc = new Y.Doc({ gc: gcEnabled });
 	const ymap = doc.getMap<PlainRow>('data');
 
-	const result: BenchmarkResult = {
+	const result = {
 		name: 'Y.Map<id, PlainObject>',
 		gcEnabled,
 		updateStrategy: strategy,
 		timings: { insert: 0, update: 0, delete: 0, recreate: 0 },
 		sizes: { afterInsert: 0, afterUpdate: 0, afterDelete: 0, afterRecreate: 0 },
 		structs: { total: 0, deleted: 0, gc: 0 },
-	};
+	} satisfies BenchmarkResult;
 
 	// INSERT
 	let start = performance.now();
@@ -270,14 +276,14 @@ function benchmarkArrayPlain(
 	const doc = new Y.Doc({ gc: gcEnabled });
 	const yarray = doc.getArray<PlainRow>('data');
 
-	const result: BenchmarkResult = {
+	const result = {
 		name: 'Y.Array<PlainObject>',
 		gcEnabled,
 		updateStrategy: strategy,
 		timings: { insert: 0, update: 0, delete: 0, recreate: 0 },
 		sizes: { afterInsert: 0, afterUpdate: 0, afterDelete: 0, afterRecreate: 0 },
 		structs: { total: 0, deleted: 0, gc: 0 },
-	};
+	} satisfies BenchmarkResult;
 
 	// INSERT
 	let start = performance.now();
@@ -351,20 +357,20 @@ function benchmarkMapYMap(
 	const doc = new Y.Doc({ gc: gcEnabled });
 	const ymap = doc.getMap<Y.Map<unknown>>('data');
 
-	const result: BenchmarkResult = {
+	const result = {
 		name: 'Y.Map<id, Y.Map>',
 		gcEnabled,
 		updateStrategy: strategy,
 		timings: { insert: 0, update: 0, delete: 0, recreate: 0 },
 		sizes: { afterInsert: 0, afterUpdate: 0, afterDelete: 0, afterRecreate: 0 },
 		structs: { total: 0, deleted: 0, gc: 0 },
-	};
+	} satisfies BenchmarkResult;
 
 	// INSERT
 	let start = performance.now();
 	doc.transact(() => {
 		for (let i = 0; i < CONFIG.NUM_ROWS; i++) {
-			ymap.set(`row-${i}`, createYMapRow(doc, `${i}`));
+			ymap.set(`row-${i}`, createYMapRow(`${i}`));
 		}
 	});
 	result.timings.insert = performance.now() - start;
@@ -427,7 +433,7 @@ function benchmarkMapYMap(
 	start = performance.now();
 	doc.transact(() => {
 		for (let i = 0; i < CONFIG.NUM_RECREATIONS; i++) {
-			ymap.set(`row-${i}`, createYMapRow(doc, `${i}`, '-v2'));
+			ymap.set(`row-${i}`, createYMapRow(`${i}`, '-v2'));
 		}
 	});
 	result.timings.recreate = performance.now() - start;
@@ -448,20 +454,20 @@ function benchmarkArrayYMap(
 	const doc = new Y.Doc({ gc: gcEnabled });
 	const yarray = doc.getArray<Y.Map<unknown>>('data');
 
-	const result: BenchmarkResult = {
+	const result = {
 		name: 'Y.Array<Y.Map>',
 		gcEnabled,
 		updateStrategy: strategy,
 		timings: { insert: 0, update: 0, delete: 0, recreate: 0 },
 		sizes: { afterInsert: 0, afterUpdate: 0, afterDelete: 0, afterRecreate: 0 },
 		structs: { total: 0, deleted: 0, gc: 0 },
-	};
+	} satisfies BenchmarkResult;
 
 	// INSERT
 	let start = performance.now();
 	doc.transact(() => {
 		for (let i = 0; i < CONFIG.NUM_ROWS; i++) {
-			yarray.push([createYMapRow(doc, `${i}`)]);
+			yarray.push([createYMapRow(`${i}`)]);
 		}
 	});
 	result.timings.insert = performance.now() - start;
@@ -520,7 +526,6 @@ function benchmarkArrayYMap(
 		for (let i = 0; i < CONFIG.NUM_RECREATIONS; i++) {
 			yarray.push([
 				createYMapRow(
-					doc,
 					`${CONFIG.NUM_ROWS - CONFIG.NUM_DELETIONS + i}`,
 					'-v2',
 				),
@@ -537,23 +542,6 @@ function benchmarkArrayYMap(
 // ============================================================================
 // Reporting
 // ============================================================================
-
-function formatBytes(bytes: number): string {
-	if (bytes < 1024) return `${bytes} B`;
-	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-	return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-function formatTime(ms: number): string {
-	if (ms < 1) return `${(ms * 1000).toFixed(0)} µs`;
-	if (ms < 1000) return `${ms.toFixed(1)} ms`;
-	return `${(ms / 1000).toFixed(2)} s`;
-}
-
-function formatPercent(ratio: number): string {
-	return `${(ratio * 100).toFixed(1)}%`;
-}
-
 function printStrategyResults(
 	results: BenchmarkResult[],
 	strategy: UpdateStrategy,
@@ -730,7 +718,7 @@ function printAnalysis(allResults: BenchmarkResult[]) {
 	console.log('\n  GC IMPACT');
 	console.log(`  ${'─'.repeat(70)}`);
 
-	const strategies: UpdateStrategy[] = ['single-column', 'full-row'];
+	const strategies = ['single-column', 'full-row'] satisfies UpdateStrategy[];
 	for (const strategy of strategies) {
 		const label = strategy === 'single-column' ? 'Single Column' : 'Full Row';
 		console.log(`\n  ${label} Updates:`);
@@ -806,7 +794,7 @@ async function main() {
 `);
 
 	const allResults: BenchmarkResult[] = [];
-	const strategies: UpdateStrategy[] = ['single-column', 'full-row', 'mixed'];
+	const strategies = ['single-column', 'full-row', 'mixed'] satisfies UpdateStrategy[];
 	const benchmarks = [
 		benchmarkMapPlain,
 		benchmarkArrayPlain,

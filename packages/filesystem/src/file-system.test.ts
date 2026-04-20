@@ -386,8 +386,8 @@ async function getTimelineLength(
 ): Promise<number> {
 	const id = fs.lookupId(path);
 	if (!id) throw new Error(`No file at ${path}`);
-	const handle = await documents.open(id);
-	return handle.length;
+	const content = await documents.open(id);
+	return content.length;
 }
 
 describe('timeline content storage', () => {
@@ -439,10 +439,10 @@ describe('sheet file support', () => {
 		const fileId = fs.lookupId('/data.csv');
 		expect(fileId).toBeDefined();
 		if (!fileId) throw new Error('Expected /data.csv to exist');
-		const handle = await documents.open(fileId);
-		handle.batch(() => {
-			handle.write('Name,Age\nAlice,30\n');
-			handle.asSheet();
+		const content = await documents.open(fileId);
+		content.batch(() => {
+			content.write('Name,Age\nAlice,30\n');
+			content.asSheet();
 		});
 		expect(await fs.readFile('/data.csv')).toBe('Name,Age\nAlice,30\n');
 	});
@@ -454,10 +454,10 @@ describe('sheet file support', () => {
 		const fileId = fs.lookupId('/data.csv');
 		expect(fileId).toBeDefined();
 		if (!fileId) throw new Error('Expected /data.csv to exist');
-		const handle = await documents.open(fileId);
-		handle.batch(() => {
-			handle.write('A,B\n1,2\n');
-			handle.asSheet();
+		const content = await documents.open(fileId);
+		content.batch(() => {
+			content.write('A,B\n1,2\n');
+			content.asSheet();
 		});
 		await fs.writeFile('/data.csv', 'X,Y\n3,4\n');
 		expect(await fs.readFile('/data.csv')).toBe('X,Y\n3,4\n');
@@ -546,17 +546,16 @@ describe('document integration', () => {
 		expect(fileId).toBeDefined();
 		if (!fileId) throw new Error('Expected /test.txt to exist');
 
-		// Open the content doc — should get a handle
-		const handle1 = await documents.open(fileId);
-		expect(handle1.ydoc.guid).toBe(fileId);
+		// Open the content doc
+		const content1 = await documents.open(fileId);
 
 		// Hard-delete the row directly from the table.
 		// The documents manager's table observer should automatically close the content doc.
 		ws.tables.files.delete(fileId);
 
-		// Re-opening should create a FRESH Y.Doc (different instance)
+		// Re-opening should create a FRESH instance
 		// because the documents manager's row-deletion observer called close()
-		const handle2 = await documents.open(fileId);
-		expect(handle2.ydoc).not.toBe(handle1.ydoc);
+		const content2 = await documents.open(fileId);
+		expect(content2).not.toBe(content1);
 	});
 });

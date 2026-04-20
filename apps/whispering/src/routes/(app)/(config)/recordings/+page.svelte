@@ -83,7 +83,7 @@
 	);
 	const DATE_FORMAT = 'PP p'; // e.g., Aug 13, 2025, 10:00 AM
 
-	const columns: ColumnDef<Recording>[] = [
+	const columns = [
 		{
 			id: 'select',
 			header: ({ table }) =>
@@ -169,7 +169,7 @@
 							description: 'Are you sure you want to delete this recording?',
 							confirm: { text: 'Delete', variant: 'destructive' },
 							onConfirm: () => {
-								services.db.recordings.revokeAudioUrl(row.original.id);
+								services.blobs.audio.revokeUrl(row.original.id);
 								recordings.delete(row.original.id);
 								rpc.notify.success({
 									title: 'Deleted recording!',
@@ -227,7 +227,7 @@
 				});
 			},
 		},
-	];
+	] satisfies ColumnDef<Recording>[];
 
 	let sorting = createPersistedState({
 		key: 'whispering-recordings-data-table-sorting',

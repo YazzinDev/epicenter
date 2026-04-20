@@ -30,7 +30,9 @@ export function parseMarkdownFile(content: string): {
 	const match = input.match(FRONTMATTER_PATTERN);
 	if (!match) return null;
 
-	const frontmatter = YAML.parse(match[1]);
+	const raw = match[1];
+	if (!raw) return null;
+	const frontmatter = YAML.parse(raw);
 	if (typeof frontmatter !== 'object' || frontmatter === null) return null;
 
 	const rawBody = input

@@ -21,6 +21,7 @@ import { type } from 'arktype';
 import { createWorkspace, defineTable } from '../../../workspace/index.js';
 import { createSqliteMaterializer } from './sqlite.js';
 import type { MirrorDatabase } from './types.js';
+import { isAction, isQuery, isMutation } from '../../../shared/actions.js';
 
 const postsTable = defineTable(
 	type({ id: 'string', _v: '1', title: 'string', 'published?': 'boolean' }),
@@ -119,11 +120,11 @@ async function waitForSyncCycle() {
 }
 
 function getRows(db: TestDb, tableName: string) {
-	return db.prepare(`SELECT * FROM "${tableName}" ORDER BY "id"`).all() as Record<string, unknown>[];
+	return db.raw.prepare(`SELECT * FROM "${tableName}" ORDER BY "id"`).all() as Record<string, unknown>[];
 }
 
 function hasTable(db: TestDb, tableName: string) {
-	const row = db
+	const row = db.raw
 		.prepare('SELECT name FROM sqlite_master WHERE type = ? AND name = ?')
 		.get('table', tableName);
 	return row != null;
@@ -326,7 +327,7 @@ describe('createSqliteMaterializer', () => {
 
 				expect(getRows(testSetup.db, 'posts')).toEqual([]);
 
-				await testSetup.workspace.extensions.sqlite.rebuild();
+				await testSetup.workspace.extensions.sqlite.rebuild({});
 
 				expect(getRows(testSetup.db, 'posts')).toEqual([
 					{ id: 'post-1', _v: 1, published: null, title: 'Persisted in Yjs' },
@@ -357,7 +358,7 @@ describe('createSqliteMaterializer', () => {
 				expect(getRows(testSetup.db, 'posts')).toEqual([]);
 				expect(getRows(testSetup.db, 'notes')).toHaveLength(1);
 
-				await testSetup.workspace.extensions.sqlite.rebuild('posts');
+				await testSetup.workspace.extensions.sqlite.rebuild({ table: 'posts' });
 
 				expect(getRows(testSetup.db, 'posts')).toEqual([
 					{ id: 'post-1', _v: 1, published: null, title: 'Post row' },
@@ -375,10 +376,9 @@ describe('createSqliteMaterializer', () => {
 				await testSetup.workspace.extensions.sqlite.whenReady;
 
 				await expect(
-					testSetup.workspace.extensions.sqlite.rebuild(
-						// @ts-expect-error -- testing runtime guard for invalid table name
-						'nonexistent',
-					),
+					testSetup.workspace.extensions.sqlite.rebuild({
+						table: 'nonexistent',
+					}),
 				).rejects.toThrow('not in the materialized table set');
 			} finally {
 				await cleanup(testSetup);
@@ -404,8 +404,8 @@ describe('createSqliteMaterializer', () => {
 
 				await testSetup.workspace.extensions.sqlite.whenReady;
 
-				expect(await testSetup.workspace.extensions.sqlite.count('posts')).toBe(2);
-				expect(await testSetup.workspace.extensions.sqlite.count('notes')).toBe(0);
+				expect(await testSetup.workspace.extensions.sqlite.count({ table: 'posts' })).toBe(2);
+				expect(await testSetup.workspace.extensions.sqlite.count({ table: 'notes' })).toBe(0);
 			} finally {
 				await cleanup(testSetup);
 			}
@@ -418,10 +418,9 @@ describe('createSqliteMaterializer', () => {
 				await testSetup.workspace.extensions.sqlite.whenReady;
 
 				expect(
-					await testSetup.workspace.extensions.sqlite.count(
-						// @ts-expect-error -- testing runtime guard for invalid table name
-						'nonexistent',
-					),
+					await testSetup.workspace.extensions.sqlite.count({
+						table: 'nonexistent',
+					}),
 				).toBe(0);
 			} finally {
 				await cleanup(testSetup);
@@ -476,7 +475,7 @@ describe('createSqliteMaterializer', () => {
 				await testSetup.workspace.extensions.sqlite.whenReady;
 
 				expect(
-					await testSetup.workspace.extensions.sqlite.search('posts', 'hello'),
+					await testSetup.workspace.extensions.sqlite.search({ table: 'posts', query: 'hello' }),
 				).toEqual([]);
 			} finally {
 				await cleanup(testSetup);
@@ -506,11 +505,11 @@ describe('createSqliteMaterializer', () => {
 
 					await testSetup.workspace.extensions.sqlite.whenReady;
 
-					const results = await testSetup.workspace.extensions.sqlite.search(
-						'posts',
-						'mirror',
-						{ snippetColumn: 'title', limit: 10 },
-					);
+					const results = await testSetup.workspace.extensions.sqlite.search({
+						table: 'posts',
+						query: 'mirror',
+						limit: 10,
+					}) as Array<{ id: string; snippet: string; rank: number }>;
 
 					expect(results).toHaveLength(1);
 					expect(results[0]?.id).toBe('post-1');
@@ -521,5 +520,31 @@ describe('createSqliteMaterializer', () => {
 				}
 			});
 		}
+	});
+
+	// ============================================================================
+	// ACTION BRAND Tests
+	// ============================================================================
+
+	describe('action brand', () => {
+		test('search, count, rebuild are detectable via isAction()', async () => {
+			const testSetup = setup();
+
+			try {
+				const { sqlite } = testSetup.workspace.extensions;
+				expect(isAction(sqlite.search)).toBe(true);
+				expect(isAction(sqlite.count)).toBe(true);
+				expect(isAction(sqlite.rebuild)).toBe(true);
+
+				expect(isQuery(sqlite.search)).toBe(true);
+				expect(isQuery(sqlite.count)).toBe(true);
+				expect(isMutation(sqlite.rebuild)).toBe(true);
+
+				// Lifecycle hooks are NOT actions
+				expect(isAction(sqlite.dispose)).toBe(false);
+			} finally {
+				await cleanup(testSetup);
+			}
+		});
 	});
 });

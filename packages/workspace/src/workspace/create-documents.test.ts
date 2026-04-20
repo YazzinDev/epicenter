@@ -1,8 +1,8 @@
 /**
  * createDocuments Tests
  *
- * Validates documents lifecycle, handle read/write behavior, and integration with table row metadata.
- * The suite protects contracts around open/close idempotency, handle pattern, cleanup semantics, and hook orchestration.
+ * Validates documents lifecycle, content read/write behavior, and integration with table row metadata.
+ * The suite protects contracts around open/close idempotency, direct content access, cleanup semantics, and hook orchestration.
  *
  * Key behaviors:
  * - Document operations keep row metadata in sync and honor documents origins.
@@ -11,7 +11,6 @@
 
 import { describe, expect, test } from 'bun:test';
 import { type } from 'arktype';
-import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import {
 	type CreateDocumentsConfig,
@@ -19,9 +18,8 @@ import {
 	DOCUMENTS_ORIGIN,
 } from './create-documents.js';
 import { createTables } from './create-tables.js';
-import { createWorkspace } from './create-workspace.js';
 import { defineTable } from './define-table.js';
-import type { AwarenessDefinitions } from './types.js';
+import { timeline } from './strategies.js';
 
 const fileSchema = type({
 	id: 'string',
@@ -29,7 +27,6 @@ const fileSchema = type({
 	updatedAt: 'number',
 	_v: '1',
 });
-const cursorSchema = type({ x: 'number', y: 'number' });
 
 function setupTables() {
 	const ydoc = new Y.Doc({ guid: 'test-workspace' });
@@ -41,9 +38,7 @@ function setup(
 	overrides?: Pick<
 		CreateDocumentsConfig<typeof fileSchema.infer>,
 		'documentExtensions'
-	> & {
-		awarenessDefinitions?: AwarenessDefinitions;
-	},
+	>,
 ) {
 	const { ydoc, tables } = setupTables();
 	const documents = createDocuments({
@@ -51,6 +46,7 @@ function setup(
 		tableName: 'files',
 		documentName: 'content',
 		guidKey: 'id',
+		content: timeline,
 		onUpdate: () => ({ updatedAt: Date.now() }),
 		tableHelper: tables.files,
 		ydoc,
@@ -61,27 +57,6 @@ function setup(
 
 describe('createDocuments', () => {
 	describe('open', () => {
-		test('returns a handle with a Y.Doc (gc: false)', async () => {
-			const { tables, documents } = setup();
-			tables.files.set({
-				id: 'f1',
-				name: 'test.txt',
-				updatedAt: 0,
-				_v: 1,
-			});
-
-			const handle = await documents.open('f1');
-			expect(handle.ydoc).toBeInstanceOf(Y.Doc);
-			expect(handle.ydoc.gc).toBe(false);
-		});
-
-		test('handle exposes tableName and documentName', async () => {
-			const { documents } = setup();
-			const handle = await documents.open('f1');
-			expect(handle.tableName).toBe('files');
-			expect(handle.documentName).toBe('content');
-		});
-
 		test('document extension factory receives tableName and documentName in context', async () => {
 			let receivedTableName: string | undefined;
 			let receivedDocumentName: string | undefined;
@@ -101,30 +76,15 @@ describe('createDocuments', () => {
 			expect(receivedDocumentName).toBe('content');
 		});
 
-		test('document extension factory can return void to skip', async () => {
-			const { documents } = setup({
-				documentExtensions: [
-					{
-						key: 'skipped',
-						factory: () => {
-							return; // void — opt out
-						},
-					},
-				],
-			});
-			const handle = await documents.open('f1');
-			expect(handle.extensions.skipped).toBeUndefined();
-		});
-
-		test('is idempotent — same GUID returns same underlying Y.Doc', async () => {
+		test('is idempotent — same GUID returns the same content instance', async () => {
 			const { documents } = setup();
 
-			const handle1 = await documents.open('f1');
-			const handle2 = await documents.open('f1');
-			expect(handle1.ydoc).toBe(handle2.ydoc);
+			const content1 = await documents.open('f1');
+			const content2 = await documents.open('f1');
+			expect(content1).toBe(content2);
 		});
 
-		test('open accepts a row object and resolves guid', async () => {
+		test('open accepts a row object and returns content', async () => {
 			const { tables, documents } = setup();
 			const row = {
 				id: 'f1',
@@ -134,43 +94,45 @@ describe('createDocuments', () => {
 			} as const;
 			tables.files.set(row);
 
-			const handle = await documents.open(row);
-			expect(handle.ydoc.guid).toBe('f1');
+			const content = await documents.open(row);
+			content.write('hello from row');
+			expect(content.read()).toBe('hello from row');
 		});
 
-		test('open accepts a string guid directly', async () => {
+		test('open accepts a string guid directly and returns content', async () => {
 			const { documents } = setup();
 
-			const handle = await documents.open('f1');
-			expect(handle.ydoc.guid).toBe('f1');
+			const content = await documents.open('f1');
+			content.write('hello from guid');
+			expect(content.read()).toBe('hello from guid');
 		});
 	});
 
-	describe('handle content read and write', () => {
+	describe('document content read and write', () => {
 		test('read returns empty string for new doc', async () => {
 			const { documents } = setup();
 
-			const handle = await documents.open('f1');
-			const text = handle.read();
+			const content = await documents.open('f1');
+			const text = content.read();
 			expect(text).toBe('');
 		});
 
 		test('write replaces text content, then read returns it', async () => {
 			const { documents } = setup();
 
-			const handle = await documents.open('f1');
-			handle.write('hello world');
-			const text = handle.read();
+			const content = await documents.open('f1');
+			content.write('hello world');
+			const text = content.read();
 			expect(text).toBe('hello world');
 		});
 
 		test('write replaces existing content', async () => {
 			const { documents } = setup();
 
-			const handle = await documents.open('f1');
-			handle.write('first');
-			handle.write('second');
-			const text = handle.read();
+			const content = await documents.open('f1');
+			content.write('first');
+			content.write('second');
+			const text = content.read();
 			expect(text).toBe('second');
 		});
 	});
@@ -185,8 +147,8 @@ describe('createDocuments', () => {
 				_v: 1,
 			});
 
-			const handle = await documents.open('f1');
-			handle.write('hello');
+			const content = await documents.open('f1');
+			content.write('hello');
 
 			// Give the update observer a tick
 			const result = tables.files.get('f1');
@@ -214,6 +176,7 @@ describe('createDocuments', () => {
 				tableName: 'files',
 				documentName: 'content',
 				guidKey: 'id',
+				content: timeline,
 				onUpdate: () => ({
 					updatedAt: 999,
 					lastEditedBy: 'test-user',
@@ -230,8 +193,8 @@ describe('createDocuments', () => {
 				_v: 1,
 			});
 
-			const handle = await documents.open('f1');
-			handle.write('hello');
+			const content = await documents.open('f1');
+			content.write('hello');
 
 			const result = tables.files.get('f1');
 			expect(result.status).toBe('valid');
@@ -252,6 +215,7 @@ describe('createDocuments', () => {
 				tableName: 'files',
 				documentName: 'content',
 				guidKey: 'id',
+				content: timeline,
 				onUpdate: () => ({}),
 				tableHelper: tables.files,
 				ydoc,
@@ -264,8 +228,8 @@ describe('createDocuments', () => {
 				_v: 1,
 			});
 
-			const handle = await documents.open('f1');
-			handle.write('hello');
+			const content = await documents.open('f1');
+			content.write('hello');
 
 			const result = tables.files.get('f1');
 			expect(result.status).toBe('valid');
@@ -288,8 +252,8 @@ describe('createDocuments', () => {
 				capturedOrigin = origin;
 			});
 
-			const handle = await documents.open('f1');
-			handle.write('hello');
+			const content = await documents.open('f1');
+			content.write('hello');
 
 			expect(capturedOrigin).toBe(DOCUMENTS_ORIGIN);
 		});
@@ -303,14 +267,18 @@ describe('createDocuments', () => {
 				_v: 1,
 			});
 
-			const handle = await documents.open('f1');
+			const content = await documents.open('f1');
+			// Get the underlying Y.Doc via a shared type — Timeline no longer exposes ydoc directly.
+			// asText() creates a timeline entry which triggers onUpdate, so reset updatedAt after.
+			const contentYdoc = content.asText().doc!;
+			tables.files.update('f1', { updatedAt: 0 });
 
 			// Apply a remote update with no origin (e.g., IndexedDB load)
 			const remoteDoc = new Y.Doc({ guid: 'f1', gc: false });
 			remoteDoc.getText('content').insert(0, 'remote edit');
 			const remoteUpdate = Y.encodeStateAsUpdate(remoteDoc);
 
-			Y.applyUpdate(handle.ydoc, remoteUpdate);
+			Y.applyUpdate(contentYdoc, remoteUpdate);
 
 			const result = tables.files.get('f1');
 			expect(result.status).toBe('valid');
@@ -330,7 +298,11 @@ describe('createDocuments', () => {
 				_v: 1,
 			});
 
-			const handle = await documents.open('f1');
+			const content = await documents.open('f1');
+			// Get the underlying Y.Doc via a shared type — Timeline no longer exposes ydoc directly.
+			// asText() creates a timeline entry which triggers onUpdate, so reset updatedAt after.
+			const contentYdoc = content.asText().doc!;
+			tables.files.update('f1', { updatedAt: 0 });
 
 			// Apply a remote update with a Symbol origin (simulating sync/broadcast)
 			const FAKE_TRANSPORT = Symbol('fake-transport');
@@ -338,7 +310,7 @@ describe('createDocuments', () => {
 			remoteDoc.getText('content').insert(0, 'synced edit');
 			const remoteUpdate = Y.encodeStateAsUpdate(remoteDoc);
 
-			Y.applyUpdate(handle.ydoc, remoteUpdate, FAKE_TRANSPORT);
+			Y.applyUpdate(contentYdoc, remoteUpdate, FAKE_TRANSPORT);
 
 			const result = tables.files.get('f1');
 			expect(result.status).toBe('valid');
@@ -352,36 +324,14 @@ describe('createDocuments', () => {
 		});
 	});
 	describe('close', () => {
-		test('document awareness is destroyed when document is closed', async () => {
-			const { documents } = setup({
-				awarenessDefinitions: {
-					cursor: cursorSchema,
-				},
-			});
-
-			const handle = await documents.open('f1');
-			let destroyed = false;
-			const originalDestroy = handle.awareness.raw.destroy.bind(
-				handle.awareness.raw,
-			);
-
-			handle.awareness.raw.destroy = () => {
-				destroyed = true;
-				originalDestroy();
-			};
-
-			await documents.close('f1');
-			expect(destroyed).toBe(true);
-		});
-
 		test('frees memory — doc can be re-opened as new instance', async () => {
 			const { documents } = setup();
 
-			const handle1 = await documents.open('f1');
+			const content1 = await documents.open('f1');
 			await documents.close('f1');
 
-			const handle2 = await documents.open('f1');
-			expect(handle2.ydoc).not.toBe(handle1.ydoc);
+			const content2 = await documents.open('f1');
+			expect(content2).not.toBe(content1);
 		});
 
 		test('close on non-existent guid is a no-op', async () => {
@@ -392,88 +342,20 @@ describe('createDocuments', () => {
 		});
 	});
 
-	describe('handle.extensions', () => {
-		test('returns accumulated exports keyed by extension name', async () => {
-			const { documents } = setup({
-				documentExtensions: [
-					{
-						key: 'persistence',
-						factory: () => ({
-							clearLocalData: () => {},
-							dispose: () => {},
-						}),
-					},
-				],
-			});
-
-			const handle = await documents.open('f1');
-			expect(handle.extensions).toBeDefined();
-			expect(handle.extensions.persistence).toBeDefined();
-			expect(typeof handle.extensions.persistence?.clearLocalData).toBe(
-				'function',
-			);
-		});
-
-		test('lifecycle-only extension is accessible with whenReady and dispose', async () => {
-			const { documents } = setup({
-				documentExtensions: [
-					{
-						key: 'lifecycle-only',
-						factory: () => ({
-							dispose: () => {},
-						}),
-					},
-				],
-			});
-
-			const handle = await documents.open('f1');
-			expect(handle.extensions).toBeDefined();
-			const ext = handle.extensions['lifecycle-only'];
-			expect(ext).toBeDefined();
-			expect(ext?.whenReady).toBeInstanceOf(Promise);
-			expect(typeof ext?.dispose).toBe('function');
-		});
-
-		test('accepts a row object', async () => {
-			const { tables, documents } = setup({
-				documentExtensions: [
-					{
-						key: 'test',
-						factory: () => ({
-							helper: () => 42,
-						}),
-					},
-				],
-			});
-
-			const row = {
-				id: 'f1',
-				name: 'test.txt',
-				updatedAt: 0,
-				_v: 1,
-			} as const;
-			tables.files.set(row);
-
-			const handle = await documents.open(row);
-			expect(handle.extensions).toBeDefined();
-			expect(typeof handle.extensions.test?.helper).toBe('function');
-		});
-	});
-
 	describe('closeAll', () => {
 		test('closes all open documents', async () => {
 			const { documents } = setup();
 
-			const handle1 = await documents.open('f1');
-			const handle2 = await documents.open('f2');
+			const content1 = await documents.open('f1');
+			const content2 = await documents.open('f2');
 
 			await documents.closeAll();
 
-			// Re-opening should create new Y.Doc instances
-			const handle1b = await documents.open('f1');
-			const handle2b = await documents.open('f2');
-			expect(handle1b.ydoc).not.toBe(handle1.ydoc);
-			expect(handle2b.ydoc).not.toBe(handle2.ydoc);
+			// Re-opening should create new content instances
+			const content1b = await documents.open('f1');
+			const content2b = await documents.open('f2');
+			expect(content1b).not.toBe(content1);
+			expect(content2b).not.toBe(content2);
 		});
 	});
 
@@ -487,12 +369,12 @@ describe('createDocuments', () => {
 				_v: 1,
 			});
 
-			const handle1 = await documents.open('f1');
+			const content1 = await documents.open('f1');
 			tables.files.delete('f1');
 
-			// After deletion, re-opening should create a new Y.Doc
-			const handle2 = await documents.open('f1');
-			expect(handle2.ydoc).not.toBe(handle1.ydoc);
+			// After deletion, re-opening should create new content
+			const content2 = await documents.open('f1');
+			expect(content2).not.toBe(content1);
 		});
 	});
 	describe('document extension hooks', () => {
@@ -581,11 +463,11 @@ describe('createDocuments', () => {
 			expect(hooksCalled).toBe(2);
 		});
 
-		test('no hooks → bare handle with Y.Doc, instant resolution', async () => {
+		test('no hooks → bare content opens with instant resolution', async () => {
 			const { documents } = setup({ documentExtensions: [] });
 
-			const handle = await documents.open('f1');
-			expect(handle.ydoc).toBeInstanceOf(Y.Doc);
+			const content = await documents.open('f1');
+			expect(content.read()).toBe('');
 		});
 	});
 
@@ -643,84 +525,6 @@ describe('createDocuments', () => {
 			await documents.open('f1');
 			expect(firstExtensionSeen).toBe(true);
 		});
-
-		test('handle.extensions includes flat exports from extensions', async () => {
-			const { documents } = setup({
-				documentExtensions: [
-					{
-						key: 'test',
-						factory: () => ({
-							helper: () => 42,
-							dispose: () => {},
-						}),
-					},
-				],
-			});
-
-			const handle = await documents.open('f1');
-			expect(handle.extensions).toBeDefined();
-			if (!handle.extensions.test) {
-				throw new Error('Expected extensions for test extension');
-			}
-			expect(typeof handle.extensions.test.helper).toBe('function');
-		});
-	});
-
-	describe('document awareness', () => {
-		test('document handle has awareness with raw property', async () => {
-			const filesTable = defineTable(
-				type({ id: 'string', name: 'string', updatedAt: 'number', _v: '1' }),
-			).withDocument('content', {
-				guid: 'id',
-				onUpdate: () => ({ updatedAt: Date.now() }),
-				awareness: {
-					cursor: cursorSchema,
-				},
-			});
-
-			const client = createWorkspace({
-				id: 'doc-awareness-typed-handle',
-				tables: { files: filesTable },
-			});
-
-			const handle = await client.documents.files.content.open('f1');
-			handle.awareness.setLocalField('cursor', { x: 3, y: 4 });
-
-			const cursor = handle.awareness.getLocalField('cursor');
-			const _typedCursor: { x: number; y: number } | undefined = cursor;
-			void _typedCursor;
-
-			// @ts-expect-error unknown awareness field should fail type-checking
-			handle.awareness.setLocalField('presence', { online: true });
-
-			expect(handle.awareness.raw).toBeInstanceOf(Awareness);
-			expect(cursor).toEqual({ x: 3, y: 4 });
-		});
-
-		test('document awareness is independent per document', async () => {
-			const filesTable = defineTable(
-				type({ id: 'string', name: 'string', updatedAt: 'number', _v: '1' }),
-			).withDocument('content', {
-				guid: 'id',
-				onUpdate: () => ({ updatedAt: Date.now() }),
-				awareness: {
-					cursor: cursorSchema,
-				},
-			});
-
-			const client = createWorkspace({
-				id: 'doc-awareness-isolated',
-				tables: { files: filesTable },
-			});
-
-			const first = await client.documents.files.content.open('f1');
-			const second = await client.documents.files.content.open('f2');
-
-			first.awareness.setLocalField('cursor', { x: 7, y: 9 });
-
-			expect(first.awareness.getLocalField('cursor')).toEqual({ x: 7, y: 9 });
-			expect(second.awareness.getLocalField('cursor')).toBeUndefined();
-		});
 	});
 });
 
@@ -728,7 +532,7 @@ describe('createDocuments', () => {
 // as*() conversion methods
 // ════════════════════════════════════════════════════════════════════════════
 
-describe('handle.asText / asRichText / asSheet', () => {
+describe('content.asText / asRichText / asSheet', () => {
 	function setupSimple() {
 		const ydoc = new Y.Doc({ guid: 'workspace' });
 		const tableDef = defineTable(
@@ -740,6 +544,7 @@ describe('handle.asText / asRichText / asSheet', () => {
 			tableName: 'files',
 			documentName: 'content',
 			guidKey: 'id',
+			content: timeline,
 			onUpdate: () => ({ updatedAt: Date.now() }),
 			tableHelper: tables.files,
 			ydoc,
@@ -752,142 +557,142 @@ describe('handle.asText / asRichText / asSheet', () => {
 
 	test('asText on empty timeline auto-creates text entry', async () => {
 		const { documents } = setupSimple();
-		const handle = await documents.open('f1');
+		const content = await documents.open('f1');
 
-		const text = handle.asText();
+		const text = content.asText();
 		expect(text).toBeInstanceOf(Y.Text);
-		expect(handle.currentType).toBe('text');
+		expect(content.currentType).toBe('text');
 	});
 
 	test('asText on text entry returns existing Y.Text', async () => {
 		const { documents } = setupSimple();
-		const handle = await documents.open('f1');
-		handle.write('hello');
+		const content = await documents.open('f1');
+		content.write('hello');
 
-		const text = handle.asText();
+		const text = content.asText();
 		expect(text.toString()).toBe('hello');
-		expect(handle.length).toBe(1);
+		expect(content.length).toBe(1);
 	});
 
 	test('asText on richtext entry converts (lossy)', async () => {
 		const { documents } = setupSimple();
-		const handle = await documents.open('f1');
+		const content = await documents.open('f1');
 
-		const fragment = handle.asRichText();
+		const fragment = content.asRichText();
 		const p = new Y.XmlElement('paragraph');
 		const t = new Y.XmlText();
 		t.insert(0, 'Rich content');
 		p.insert(0, [t]);
 		fragment.insert(0, [p]);
 
-		expect(handle.currentType).toBe('richtext');
+		expect(content.currentType).toBe('richtext');
 
-		const text = handle.asText();
+		const text = content.asText();
 		expect(text.toString()).toBe('Rich content');
-		expect(handle.currentType).toBe('text');
-		expect(handle.length).toBe(2);
+		expect(content.currentType).toBe('text');
+		expect(content.length).toBe(2);
 	});
 
 	test('asText on sheet entry converts to CSV', async () => {
 		const { documents } = setupSimple();
-		const handle = await documents.open('f1');
+		const content = await documents.open('f1');
 
-		handle.write('Name,Age\nAlice,30\n');
-		handle.asSheet();
-		expect(handle.currentType).toBe('sheet');
+		content.write('Name,Age\nAlice,30\n');
+		content.asSheet();
+		expect(content.currentType).toBe('sheet');
 
-		const text = handle.asText();
+		const text = content.asText();
 		expect(text.toString()).toBe('Name,Age\nAlice,30\n');
-		expect(handle.currentType).toBe('text');
-		expect(handle.length).toBe(3);
+		expect(content.currentType).toBe('text');
+		expect(content.length).toBe(3);
 	});
 
 	// ─── asRichText ────────────────────────────────────────────────────
 
 	test('asRichText on empty timeline auto-creates richtext entry', async () => {
 		const { documents } = setupSimple();
-		const handle = await documents.open('f1');
+		const content = await documents.open('f1');
 
-		const fragment = handle.asRichText();
+		const fragment = content.asRichText();
 		expect(fragment).toBeInstanceOf(Y.XmlFragment);
-		expect(handle.currentType).toBe('richtext');
+		expect(content.currentType).toBe('richtext');
 	});
 
 	test('asRichText on richtext entry returns existing fragment', async () => {
 		const { documents } = setupSimple();
-		const handle = await documents.open('f1');
-		handle.asRichText();
+		const content = await documents.open('f1');
+		content.asRichText();
 
-		const fragment = handle.asRichText();
+		const fragment = content.asRichText();
 		expect(fragment).toBeInstanceOf(Y.XmlFragment);
-		expect(handle.length).toBe(1);
+		expect(content.length).toBe(1);
 	});
 
 	test('asRichText on text entry converts to paragraphs', async () => {
 		const { documents } = setupSimple();
-		const handle = await documents.open('f1');
-		handle.write('Line 1\nLine 2');
+		const content = await documents.open('f1');
+		content.write('Line 1\nLine 2');
 
-		const fragment = handle.asRichText();
+		const fragment = content.asRichText();
 		expect(fragment).toBeInstanceOf(Y.XmlFragment);
-		expect(handle.currentType).toBe('richtext');
-		expect(handle.length).toBe(2);
-		expect(handle.read()).toBe('Line 1\nLine 2');
+		expect(content.currentType).toBe('richtext');
+		expect(content.length).toBe(2);
+		expect(content.read()).toBe('Line 1\nLine 2');
 	});
 
 	test('asRichText on sheet entry converts CSV to paragraphs', async () => {
 		const { documents } = setupSimple();
-		const handle = await documents.open('f1');
-		handle.write('A,B\n1,2\n');
-		handle.asSheet();
+		const content = await documents.open('f1');
+		content.write('A,B\n1,2\n');
+		content.asSheet();
 
-		const fragment = handle.asRichText();
+		const fragment = content.asRichText();
 		expect(fragment).toBeInstanceOf(Y.XmlFragment);
-		expect(handle.currentType).toBe('richtext');
-		expect(handle.length).toBe(3);
+		expect(content.currentType).toBe('richtext');
+		expect(content.length).toBe(3);
 	});
 
 	// ─── asSheet ──────────────────────────────────────────────────────
 
 	test('asSheet on empty timeline auto-creates sheet entry', async () => {
 		const { documents } = setupSimple();
-		const handle = await documents.open('f1');
+		const content = await documents.open('f1');
 
-		const sheet = handle.asSheet();
+		const sheet = content.asSheet();
 		expect(sheet.columns).toBeInstanceOf(Y.Map);
 		expect(sheet.rows).toBeInstanceOf(Y.Map);
-		expect(handle.currentType).toBe('sheet');
+		expect(content.currentType).toBe('sheet');
 	});
 
 	test('asSheet on sheet entry returns existing binding', async () => {
 		const { documents } = setupSimple();
-		const handle = await documents.open('f1');
-		handle.write('X,Y\n1,2\n');
-		handle.asSheet();
+		const content = await documents.open('f1');
+		content.write('X,Y\n1,2\n');
+		content.asSheet();
 
-		const sheet = handle.asSheet();
+		const sheet = content.asSheet();
 		expect(sheet.columns.size).toBe(2);
 		expect(sheet.rows.size).toBe(1);
-		expect(handle.length).toBe(2);
+		expect(content.length).toBe(2);
 	});
 
 	test('asSheet on text entry parses as CSV', async () => {
 		const { documents } = setupSimple();
-		const handle = await documents.open('f1');
-		handle.write('Col1,Col2\nA,B\n');
+		const content = await documents.open('f1');
+		content.write('Col1,Col2\nA,B\n');
 
-		const sheet = handle.asSheet();
+		const sheet = content.asSheet();
 		expect(sheet.columns.size).toBe(2);
 		expect(sheet.rows.size).toBe(1);
-		expect(handle.currentType).toBe('sheet');
-		expect(handle.length).toBe(2);
+		expect(content.currentType).toBe('sheet');
+		expect(content.length).toBe(2);
 	});
 
 	test('asSheet on richtext entry extracts text then parses CSV', async () => {
 		const { documents } = setupSimple();
-		const handle = await documents.open('f1');
+		const content = await documents.open('f1');
 
-		const fragment = handle.asRichText();
+		const fragment = content.asRichText();
 		const p1 = new Y.XmlElement('paragraph');
 		const t1 = new Y.XmlText();
 		t1.insert(0, 'Name,Age');
@@ -898,43 +703,43 @@ describe('handle.asText / asRichText / asSheet', () => {
 		p2.insert(0, [t2]);
 		fragment.insert(0, [p1, p2]);
 
-		const sheet = handle.asSheet();
+		const sheet = content.asSheet();
 		expect(sheet.columns.size).toBe(2);
-		expect(handle.currentType).toBe('sheet');
-		expect(handle.length).toBe(2);
+		expect(content.currentType).toBe('sheet');
+		expect(content.length).toBe(2);
 	});
 
 	// ─── mode getter ──────────────────────────────────────────────────
 
 	test('mode reflects current timeline state', async () => {
 		const { documents } = setupSimple();
-		const handle = await documents.open('f1');
+		const content = await documents.open('f1');
 
-		expect(handle.currentType).toBeUndefined(); // empty
-		handle.write('text');
-		expect(handle.currentType).toBe('text');
+		expect(content.currentType).toBeUndefined(); // empty
+		content.write('text');
+		expect(content.currentType).toBe('text');
 	});
 
 	// ─── consecutive conversions ──────────────────────────────────────
 
 	test('consecutive conversions: text → richtext → sheet → text', async () => {
 		const { documents } = setupSimple();
-		const handle = await documents.open('f1');
+		const content = await documents.open('f1');
 
-		handle.write('hello');
-		expect(handle.currentType).toBe('text');
-		expect(handle.length).toBe(1);
+		content.write('hello');
+		expect(content.currentType).toBe('text');
+		expect(content.length).toBe(1);
 
-		handle.asRichText();
-		expect(handle.currentType).toBe('richtext');
-		expect(handle.length).toBe(2);
+		content.asRichText();
+		expect(content.currentType).toBe('richtext');
+		expect(content.length).toBe(2);
 
-		handle.asSheet();
-		expect(handle.currentType).toBe('sheet');
-		expect(handle.length).toBe(3);
+		content.asSheet();
+		expect(content.currentType).toBe('sheet');
+		expect(content.length).toBe(3);
 
-		handle.asText();
-		expect(handle.currentType).toBe('text');
-		expect(handle.length).toBe(4);
+		content.asText();
+		expect(content.currentType).toBe('text');
+		expect(content.length).toBe(4);
 	});
 });

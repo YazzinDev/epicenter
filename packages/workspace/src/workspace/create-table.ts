@@ -67,6 +67,17 @@ export function createTable<
 			ykv.set(row.id, row);
 		},
 
+		/**
+		 * Insert many rows in chunked transactions with event-loop yielding.
+		 *
+		 * Default chunkSize is 1000 (benchmarked sweet spot for inserts).
+		 * The bottleneck for bulkSet is the observer's conflict resolution—
+		 * each chunk triggers one observer pass that builds an entryIndexMap
+		 * and deduplicates entries. Smaller chunks keep each pass manageable.
+		 *
+		 * Use `onProgress` for UI feedback (progress bars). The 1000 default
+		 * balances progress granularity against per-chunk overhead.
+		 */
 		async bulkSet(
 			rows: TRow[],
 			options?: {
@@ -177,6 +188,33 @@ export function createTable<
 			ykv.delete(id);
 		},
 
+		/**
+		 * Delete many rows in chunked transactions with event-loop yielding.
+		 *
+		 * Default chunkSize is 2500 (benchmarked sweet spot for deletions).
+		 * This differs from bulkSet's default of 1000 because the cost profiles
+		 * are different:
+		 *
+		 * - **bulkSet** is bottlenecked by observer conflict resolution (entryIndexMap
+		 *   build + dedup). Smaller chunks keep each observer pass manageable.
+		 * - **bulkDelete** is bottlenecked by `Y.Array.delete()` linked-list walks
+		 *   inside the Yjs transaction. Moderate chunks (2000–3000) amortize the
+		 *   per-chunk overhead without overloading a single transaction.
+		 *
+		 * The `toArray()` scan inside `ykv.bulkDelete` is ~0.04ms even at 25K entries—
+		 * negligible. The real cost is the Yjs linked-list deletion, which scales
+		 * non-linearly within large transactions.
+		 *
+		 * Benchmark data (25K rows):
+		 * ```
+		 * chunkSize=100:    ~360ms
+		 * chunkSize=500:     ~97ms
+		 * chunkSize=1000:    ~74ms
+		 * chunkSize=2500:    ~66ms  ← default
+		 * chunkSize=5000:    ~96ms
+		 * single call:      ~215ms
+		 * ```
+		 */
 		async bulkDelete(
 			ids: string[],
 			options?: {
@@ -184,7 +222,7 @@ export function createTable<
 				onProgress?: (percent: number) => void;
 			},
 		): Promise<void> {
-			const { chunkSize = 1000, onProgress } = options ?? {};
+			const { chunkSize = 2500, onProgress } = options ?? {};
 			const total = ids.length;
 
 			for (let i = 0; i < total; i += chunkSize) {
@@ -197,9 +235,7 @@ export function createTable<
 
 		clear(): void {
 			const keys = Array.from(ykv.readableEntries()).map(([k]) => k);
-			for (const key of keys) {
-				ykv.delete(key);
-			}
+			ykv.bulkDelete(keys);
 		},
 
 		// ═══════════════════════════════════════════════════════════════════════

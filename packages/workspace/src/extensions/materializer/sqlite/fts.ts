@@ -116,23 +116,25 @@ export async function ftsSearch(
 	try {
 		const qt = quoteIdentifier(tableName);
 		const qfts = quoteIdentifier(ftsTableName);
-		const rows = await db
-			.prepare(
-				`SELECT ${qt}.${quoteIdentifier('id')} AS id,\n` +
-					`  snippet(${qfts}, ${snippetColumnIndex}, '<mark>', '</mark>', '...', 64) AS snippet,\n` +
-					`  rank\n` +
-					`FROM ${qfts}\n` +
-					`JOIN ${qt} ON ${qt}.rowid = ${qfts}.rowid\n` +
-					`WHERE ${qfts} MATCH ?\n` +
-					`ORDER BY rank LIMIT ?`,
-			)
-			.all(trimmed, limit);
+		const stmt = await db.prepare(
+			`SELECT ${qt}.${quoteIdentifier('id')} AS id,\n` +
+				`  snippet(${qfts}, ${snippetColumnIndex}, '<mark>', '</mark>', '...', 64) AS snippet,\n` +
+				`  rank\n` +
+				`FROM ${qfts}\n` +
+				`JOIN ${qt} ON ${qt}.rowid = ${qfts}.rowid\n` +
+				`WHERE ${qfts} MATCH ?\n` +
+				`ORDER BY rank LIMIT ?`,
+		);
+		const rows = await stmt.all(trimmed, limit);
 
-		return rows.map((row) => ({
-			id: String(row.id),
-			snippet: String(row.snippet ?? ''),
-			rank: Number(row.rank ?? 0),
-		}));
+		return rows.map((row) => {
+			const r = row as Record<string, unknown>;
+			return {
+				id: String(r.id),
+				snippet: String(r.snippet ?? ''),
+				rank: Number(r.rank ?? 0),
+			};
+		});
 	} catch (error: unknown) {
 		console.warn('[createSqliteMaterializer] FTS search failed.', error);
 		return [];

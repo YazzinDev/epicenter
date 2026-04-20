@@ -15,6 +15,8 @@
 
 import type { StandardJSONSchemaV1 } from '@standard-schema/spec';
 import { standardSchemaToJsonSchema } from '../../../shared/standard-schema.js';
+import Type from 'typebox';
+import { defineMutation, defineQuery } from '../../../shared/actions.js';
 import type { BaseRow, TableHelper } from '../../../workspace/types.js';
 import { generateDdl, quoteIdentifier } from './ddl.js';
 import { ftsSearch, setupFtsTable } from './fts.js';
@@ -91,15 +93,17 @@ export function createSqliteMaterializer<
 		const values = keys.map((key) => serialize(row[key]));
 		const columns = keys.map(quoteIdentifier).join(', ');
 
-		await db.prepare(
+		const stmt = await db.prepare(
 			`INSERT OR REPLACE INTO ${quoteIdentifier(tableName)} (${columns}) VALUES (${placeholders})`,
-		).run(...values);
+		);
+		await stmt.run(...values);
 	}
 
 	async function deleteRow(tableName: string, id: string) {
-		await db.prepare(
+		const stmt = await db.prepare(
 			`DELETE FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier('id')} = ?`,
-		).run(id);
+		);
+		await stmt.run(id);
 	}
 
 	// ── Full load ────────────────────────────────────────────────
@@ -117,7 +121,7 @@ export function createSqliteMaterializer<
 		const keys = Object.keys(rows[0]!);
 		const placeholders = keys.map(() => '?').join(', ');
 		const columns = keys.map(quoteIdentifier).join(', ');
-		const stmt = db.prepare(
+		const stmt = await db.prepare(
 			`INSERT OR REPLACE INTO ${quoteIdentifier(tableName)} (${columns}) VALUES (${placeholders})`,
 		);
 
@@ -232,9 +236,10 @@ export function createSqliteMaterializer<
 		}
 
 		try {
-			const row = await db
-				.prepare(`SELECT COUNT(*) AS count FROM ${quoteIdentifier(tableName)}`)
-				.get();
+			const stmt = await db.prepare(
+				`SELECT COUNT(*) AS count FROM ${quoteIdentifier(tableName)}`,
+			);
+			const row = await stmt.get() as Record<string, unknown> | null;
 			return Number(row?.count ?? 0);
 		} catch {
 			return 0;
@@ -391,14 +396,13 @@ export function createSqliteMaterializer<
 		): MaterializerBuilder;
 		whenReady: Promise<void>;
 		dispose(): void;
-		search(
-			table: keyof TTables & string,
-			query: string,
-			options?: SearchOptions,
-		): Promise<SearchResult[]>;
-		count(table: keyof TTables & string): Promise<number>;
-		rebuild(table?: keyof TTables & string): Promise<void>;
 		db: MirrorDatabase;
+		/** FTS5 search across a materialized table. Only present when at least one table has `fts` configured. */
+		search: ReturnType<typeof defineQuery>;
+		/** Row count for a materialized table. */
+		count: ReturnType<typeof defineQuery>;
+		/** Rebuild all materialized tables from Yjs source of truth. */
+		rebuild: ReturnType<typeof defineMutation>;
 	};
 
 	const builder: MaterializerBuilder = {
@@ -408,10 +412,34 @@ export function createSqliteMaterializer<
 		},
 		whenReady: initialize(),
 		dispose,
-		search,
-		count,
-		rebuild,
 		db,
+		search: defineQuery({
+			title: 'Full-text search',
+			description: 'FTS5 search across materialized table rows',
+			input: Type.Object({
+				table: Type.String(),
+				query: Type.String(),
+				limit: Type.Optional(Type.Number()),
+			}),
+			handler: ({ table: tableName, query: q, limit: lim }) =>
+				search(tableName, q, lim !== undefined ? { limit: lim } : undefined),
+		}),
+		count: defineQuery({
+			title: 'Row count',
+			description: 'Count rows in a materialized table',
+			input: Type.Object({
+				table: Type.String(),
+			}),
+			handler: ({ table: tableName }) => count(tableName),
+		}),
+		rebuild: defineMutation({
+			title: 'Rebuild materializer',
+			description: 'Drop and rebuild all materialized tables from Yjs source',
+			input: Type.Object({
+				table: Type.Optional(Type.String()),
+			}),
+			handler: ({ table: tableName }) => rebuild(tableName),
+		}),
 	};
 
 	return builder;

@@ -6,7 +6,7 @@
  * the result.
  */
 
-import type { Action } from '@epicenter/workspace';
+import type { Action, Actions } from '@epicenter/workspace';
 import { iterateActions } from '@epicenter/workspace';
 import type { Argv } from 'yargs';
 import {
@@ -41,23 +41,46 @@ export const runActionCommand = defineCommand({
 		await runCommand(
 			{ dir: argv.dir, workspaceId: argv.workspace },
 			async (client) => {
-				if (!client.actions) {
-					throw new Error('This workspace has no actions defined');
+				// Find action by dot-path — check client.actions first, then extensions
+				let found: Action | undefined;
+				if (client.actions) {
+					for (const [action, path] of iterateActions(client.actions)) {
+						if (path.join('.') === actionPath.join('.')) {
+							found = action;
+							break;
+						}
+					}
 				}
 
-				// Find action by dot-path
-				let found: Action | undefined;
-				for (const [action, path] of iterateActions(client.actions)) {
-					if (path.join('.') === actionPath.join('.')) {
-						found = action;
-						break;
+				// Fall through to extensions if not found in actions
+				if (!found && client.extensions) {
+					for (const [extKey, extValue] of Object.entries(client.extensions)) {
+						if (extValue == null || typeof extValue !== 'object') continue;
+						for (const [action, path] of iterateActions(extValue as Actions)) {
+							const extPath = [extKey, ...path].join('.');
+							if (extPath === actionPath.join('.')) {
+								found = action;
+								break;
+							}
+						}
+						if (found) break;
 					}
 				}
 
 				if (!found) {
 					const available: string[] = [];
-					for (const [, path] of iterateActions(client.actions)) {
-						available.push(path.join('.'));
+					if (client.actions) {
+						for (const [, path] of iterateActions(client.actions)) {
+							available.push(path.join('.'));
+						}
+					}
+					if (client.extensions) {
+						for (const [extKey, extValue] of Object.entries(client.extensions)) {
+							if (extValue == null || typeof extValue !== 'object') continue;
+							for (const [, path] of iterateActions(extValue as Actions)) {
+								available.push([extKey, ...path].join('.'));
+							}
+						}
 					}
 					const msg =
 						available.length > 0

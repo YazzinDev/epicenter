@@ -47,6 +47,22 @@ export function createAuth({
 		database: drizzleAdapter(db, { provider: 'pg' }),
 		baseURL,
 		secret: env.BETTER_AUTH_SECRET,
+		account: {
+			...BASE_AUTH_CONFIG.account,
+			// Better Auth's database strategy validates OAuth callbacks two ways:
+			// 1. A verification record in Postgres (random token, single-use, 10min TTL)
+			// 2. A signed state cookie set during the sign-in POST
+			//
+			// Layer 2 fails in our architecture. The sign-in POST is a cross-origin
+			// fetch (opensidian.com → api.epicenter.so), and modern browsers block
+			// third-party Set-Cookie from fetch responses—even with SameSite=None.
+			// Chrome Privacy Sandbox, Safari ITP, and Firefox ETP all enforce this.
+			// The cookie is never stored, so the callback can't read it back.
+			//
+			// Layer 1 (DB verification) is the primary security mechanism and is
+			// unaffected. skipStateCookieCheck disables only layer 2.
+			skipStateCookieCheck: true,
+		},
 		socialProviders: {
 			google: {
 				clientId: env.GOOGLE_CLIENT_ID,
@@ -56,6 +72,8 @@ export function createAuth({
 		session: {
 			expiresIn: 60 * 60 * 24 * 7,
 			updateAge: 60 * 60 * 24,
+			// Write sessions to Postgres (source of truth), not just KV.
+			// Required when secondaryStorage is configured—see comment below.
 			storeSessionInDatabase: true,
 			cookieCache: {
 				enabled: true,
@@ -63,29 +81,30 @@ export function createAuth({
 				strategy: 'jwe',
 			},
 		},
-		// Cross-origin cookie config for OAuth and sessions.
+		// Cross-origin cookie config for sessions.
 		//
 		// The auth server (api.epicenter.so) serves multiple client apps:
-		//   - Production subdomains: fuji.epicenter.so, opensidian.com
+		//   - Subdomains: fuji.epicenter.so, opensidian.epicenter.so
+		//   - External domains: opensidian.com
 		//   - Desktop: tauri://localhost
 		//   - Dev: localhost:5173, localhost:5174, etc.
 		//
-		// OAuth state cookies are set during a cross-origin POST (client → API),
-		// then read back on a top-level GET (Google → API callback). With the
-		// default SameSite=lax, browsers may drop cookies set via cross-origin
-		// POST responses, causing "state_mismatch" errors on the callback.
+		// SameSite=None + Secure lets browsers send session cookies on
+		// cross-origin fetches (e.g. opensidian.com → api.epicenter.so).
+		// This trades browser-level CSRF for app-level origin checking,
+		// which Better Auth enforces via trustedOrigins on every request.
+		// Standard practice for auth servers on a separate domain—same
+		// model as Auth0, Clerk, and Supabase Auth.
 		//
-		// SameSite=none tells the browser to send cookies on all cross-origin
-		// requests. This trades browser-level CSRF protection for app-level
-		// protection (trustedOrigins + origin header checking, which Better Auth
-		// already enforces on every request). Standard practice for auth servers
-		// on a separate domain—same model as Auth0, Clerk, and Supabase Auth.
+		// crossSubDomainCookies scopes cookies to .epicenter.so so any
+		// subdomain shares sessions. Apps on other domains (opensidian.com)
+		// still work because their fetches target api.epicenter.so.
 		//
-		// NOTE: We intentionally omit `partitioned: true` (CHIPS). Partitioned
-		// cookies are keyed by the top-level site at creation time. During OAuth,
-		// the top-level site changes mid-flow (client → Google → API callback),
-		// so the cookie becomes invisible at the callback step. Partitioned is
-		// designed for embedded iframes/subresources, not redirect-based OAuth.
+		// NOTE: We intentionally omit `partitioned: true` (CHIPS).
+		// Partitioned cookies are keyed by the top-level site at creation
+		// time. During OAuth the top-level site changes mid-flow (client →
+		// Google → API callback), so the cookie becomes invisible at the
+		// callback step. Partitioned is for iframes, not redirect OAuth.
 		advanced: {
 			crossSubDomainCookies: {
 				enabled: true,
@@ -154,6 +173,23 @@ export function createAuth({
 			}
 			return origins;
 		},
+		// secondaryStorage = Cloudflare KV as a read-through cache.
+		// Postgres (Germany) is always the source of truth. KV avoids the
+		// ~150ms round-trip on repeated session reads from distant edges.
+		//
+		// Staleness: KV is eventually consistent, so cached entries may
+		// briefly outlive their Postgres counterparts after deletion.
+		//   - Sessions: a revoked session stays valid in KV for up to
+		//     cookieCache.maxAge (5 min). Standard Redis/KV cache tradeoff.
+		//   - Verification: a consumed OAuth state may linger in KV, but
+		//     replaying it requires a valid Google authorization code that
+		//     was already consumed—harmless.
+		//
+		// IMPORTANT: When secondaryStorage is configured, Better Auth
+		// defaults to KV-only writes unless you opt back into Postgres
+		// with storeSessionInDatabase / storeInDatabase. Missing either
+		// flag causes silent data loss. If you remove secondaryStorage,
+		// remove both flags too.
 		secondaryStorage: {
 			get: (key: string) => env.SESSION_KV.get(key),
 			set: (key: string, value: string, ttl?: number) =>
@@ -161,6 +197,12 @@ export function createAuth({
 					expirationTtl: ttl ?? 60 * 5,
 				}),
 			delete: (key: string) => env.SESSION_KV.delete(key),
+		},
+		// Write verification records to Postgres, not just KV. Required
+		// for OAuth state—KV eventual consistency means the callback edge
+		// may not see a record written moments earlier at a different edge.
+		verification: {
+			storeInDatabase: true,
 		},
 	} satisfies Omit<BetterAuthOptions, 'plugins'>;
 

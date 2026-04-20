@@ -485,9 +485,9 @@ async function documentExample() {
 	});
 
 	const handle = await workspace.documents.files.content.open('doc-1');
-	handle.write('# Hello from a document');
-	console.log(handle.read());
-	console.log(handle.currentType);
+	handle.content.write('# Hello from a document');
+	console.log(handle.content.read());
+	console.log(handle.content.currentType);
 	await workspace.documents.files.content.close('doc-1');
 	await workspace.dispose();
 	return handle;
@@ -1399,19 +1399,22 @@ Lifecycle and utility methods:
 
 ### Document content model
 
-Open document handles are timeline APIs.
+Open document handles expose content via `handle.content`, typed by the content strategy.
 
-Important methods and properties:
+For timeline strategy (`content: timeline`):
 
-- `handle.read()`
-- `handle.write(text)`
-- `handle.appendText(text)`
-- `handle.asText()`
-- `handle.asRichText()`
-- `handle.asSheet()`
-- `handle.currentType`
-- `handle.observe(...)`
-- `handle.restoreFromSnapshot(binary)`
+- `handle.content.read()`
+- `handle.content.write(text)`
+- `handle.content.appendText(text)`
+- `handle.content.asText()`
+- `handle.content.asRichText()`
+- `handle.content.asSheet()`
+- `handle.content.currentType`
+- `handle.content.observe(...)`
+- `handle.content.restoreFromSnapshot(binary)`
+
+For plainText strategy (`content: plainText`), `handle.content` is `Y.Text`.
+For richText strategy (`content: richText`), `handle.content` is `Y.XmlFragment`.
 
 Document managers live at `client.documents.{tableName}.{documentName}` and expose:
 

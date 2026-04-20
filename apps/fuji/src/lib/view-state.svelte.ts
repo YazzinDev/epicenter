@@ -31,11 +31,11 @@ type SearchParams = {
 	q: string;
 };
 
-const DEFAULTS: SearchParams = {
+const DEFAULTS = {
 	view: 'table',
 	sort: 'date',
 	q: '',
-};
+} satisfies SearchParams;
 
 /** Batch-update URL search params in a single navigation. */
 function update(changes: Partial<SearchParams>) {

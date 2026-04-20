@@ -16,6 +16,7 @@
 	import { migrationDialog } from '$lib/migration/migration-dialog.svelte';
 	import { rpc } from '$lib/query';
 	import { services } from '$lib/services';
+	import { recordings } from '$lib/state/recordings.svelte';
 	import { settings } from '$lib/state/settings.svelte';
 	import { vadRecorder } from '$lib/state/vad-recorder.svelte';
 	import { syncWindowAlwaysOnTopWithRecorderState } from '../_layout-utils/alwaysOnTop.svelte';
@@ -84,12 +85,18 @@
 	}
 
 	$effect(() => {
-		getRecorderStateQuery.data;
-		vadRecorder.state; // Reactive VAD state access
-		services.db.recordings.cleanupExpired({
-			recordingRetentionStrategy: settings.get('retention.strategy'),
-			maxRecordingCount: settings.get('retention.maxCount'),
-		});
+		const strategy = settings.get('retention.strategy');
+		if (strategy !== 'limit-count') return;
+
+		const maxCount = settings.get('retention.maxCount');
+		const allRecordingIds = recordings.sorted.map((r) => r.id);
+		if (allRecordingIds.length <= maxCount) return;
+
+		const idsToDelete = allRecordingIds.slice(maxCount);
+		// Delete audio blobs from storage
+		services.blobs.audio.delete(idsToDelete);
+		// Delete recording metadata from workspace (single-scan bulk)
+		recordings.bulkDelete(idsToDelete);
 	});
 
 	let { children } = $props();

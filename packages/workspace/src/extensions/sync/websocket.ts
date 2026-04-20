@@ -121,6 +121,25 @@ export type SyncExtensionExports = {
 	reconnect(): void;
 
 	/**
+	 * Promise that resolves when the sync extension first reaches `connected` phase.
+	 *
+	 * Unlike `whenReady` (which resolves after the supervisor loop starts),
+	 * `whenConnected` waits for the WebSocket handshake to complete and the
+	 * first sync exchange to finish. Use this in CLI scripts and tools that
+	 * need remote data before proceeding.
+	 *
+	 * Browser apps should use `whenReady` instead—it resolves instantly from
+	 * local persistence and doesn't block on network availability.
+	 *
+	 * @example
+	 * ```typescript
+	 * await workspace.whenReady;                        // local data ready
+	 * await workspace.extensions.sync.whenConnected;    // remote data ready
+	 * ```
+	 */
+	readonly whenConnected: Promise<void>;
+
+	/**
 	 * Invoke an action on a remote peer in this room.
 	 *
 	 * Pass a type map (from `InferRpcMap`) for full type safety, or omit it
@@ -242,6 +261,7 @@ export function createSyncExtension(config: SyncExtensionConfig): (
 	context: SharedExtensionContext,
 ) => SyncExtensionExports & {
 	whenReady: Promise<unknown>;
+	whenConnected: Promise<void>;
 	dispose: () => void;
 } {
 	return ({ ydoc: doc, awareness: ctxAwareness, whenReady: priorReady }) => {
@@ -263,6 +283,7 @@ export function createSyncExtension(config: SyncExtensionConfig): (
 		// ── Zone 2: Mutable state ──
 
 		const status = createStatusEmitter<SyncStatus>({ phase: 'offline' });
+		const { promise: whenConnected, resolve: resolveConnected } = Promise.withResolvers<void>();
 		const backoff = createBackoff();
 
 		/** User intent: should we be connected? Set by connect()/goOffline(). */
@@ -364,7 +385,7 @@ export function createSyncExtension(config: SyncExtensionConfig): (
 			}
 
 			const { data, error } = await tryAsync({
-				try: () => target(rpc.input),
+				try: async () => target(rpc.input),
 				catch: (err) =>
 					RpcError.ActionFailed({ action: rpc.action, cause: err }),
 			});
@@ -671,6 +692,7 @@ export function createSyncExtension(config: SyncExtensionConfig): (
 								phase: 'connected',
 								hasLocalChanges: localVersion > ackedVersion,
 							});
+							resolveConnected();
 						}
 						break;
 					}
@@ -768,6 +790,8 @@ export function createSyncExtension(config: SyncExtensionConfig): (
 			},
 
 			onStatusChange: status.subscribe,
+
+			whenConnected,
 
 			reconnect() {
 				if (desired !== 'online') return;

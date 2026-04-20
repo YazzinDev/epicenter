@@ -25,7 +25,7 @@ export type CsvOptions = {
 	comment?: string;
 };
 
-const defaultOpts: Required<CsvOptions> = {
+const defaultOpts = {
 	delimiter: ',',
 	quote: '"',
 	escape: '"',
@@ -33,7 +33,7 @@ const defaultOpts: Required<CsvOptions> = {
 	headers: true,
 	skipEmptyLines: true,
 	comment: '#',
-};
+} satisfies Required<CsvOptions>;
 
 /**
  * Parse CSV text into objects (headers=true) or raw 2D array (headers=false).

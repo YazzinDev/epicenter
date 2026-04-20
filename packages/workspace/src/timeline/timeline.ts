@@ -41,8 +41,6 @@ export type TimelineEntry = TextEntry | RichTextEntry | SheetEntry;
 export type ContentType = TimelineEntry['type'];
 
 export type Timeline = {
-	/** The Y.Doc this timeline is bound to. */
-	readonly ydoc: Y.Doc;
 	/** Number of entries in the timeline. */
 	readonly length: number;
 	/**
@@ -255,9 +253,6 @@ export function createTimeline(ydoc: Y.Doc): Timeline {
 	// ── Public API ────────────────────────────────────────────────────────
 
 	return {
-		get ydoc() {
-			return ydoc;
-		},
 		get length() {
 			return timeline.length;
 		},

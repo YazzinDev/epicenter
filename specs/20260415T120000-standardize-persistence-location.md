@@ -1,8 +1,10 @@
 # Standardize Persistence Location
 
 **Date**: 2026-04-15
-**Status**: In Progress
+**Status**: Partially superseded — 2026-04-18
 **Author**: AI-assisted
+
+> **2026-04-18 Update**: `connectWorkspace` no longer uses persistence at all — the "global is correct" row below no longer applies to scripts. `EPICENTER_PATHS.persistence()` remains the standard location for daemon configs (`epicenter.config.ts`). The guidance for playground/daemon configs in this spec is unchanged.
 
 ## Overview
 

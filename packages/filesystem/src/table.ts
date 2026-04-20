@@ -1,4 +1,8 @@
-import { defineTable, type InferTableRow } from '@epicenter/workspace';
+import {
+	defineTable,
+	type InferTableRow,
+	timeline,
+} from '@epicenter/workspace';
 import { type } from 'arktype';
 import { FileId } from './ids.js';
 
@@ -15,6 +19,7 @@ export const filesTable = defineTable(
 		_v: '1',
 	}),
 ).withDocument('content', {
+	content: timeline,
 	guid: 'id',
 	onUpdate: () => ({ updatedAt: Date.now() }),
 });

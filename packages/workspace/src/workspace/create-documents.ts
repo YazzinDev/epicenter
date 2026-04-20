@@ -36,11 +36,9 @@
  *   ydoc,
  * });
  *
- * const handle = await contentDocuments.open(someRow);
- * handle.tableName;    // 'files'
- * handle.documentName; // 'content'
- * handle.read();       // read content
- * handle.write('new content');
+ * const content = await contentDocuments.open(someRow);
+ * content.read();          // read content as string
+ * content.write('new content');  // replace content
  * ```
  *
  * @module
@@ -48,8 +46,6 @@
 
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-import { createTimeline } from '../timeline/timeline.js';
-import { createAwareness } from './create-awareness.js';
 import {
 	defineExtension,
 	disposeLifo,
@@ -58,10 +54,10 @@ import {
 	startDisposeLifo,
 } from './lifecycle.js';
 import type {
-	AwarenessDefinitions,
 	BaseRow,
+	ContentHandle,
+	ContentStrategy,
 	DocumentExtensionRegistration,
-	DocumentHandle,
 	Documents,
 	TableHelper,
 } from './types.js';
@@ -80,15 +76,12 @@ export const DOCUMENTS_ORIGIN = Symbol('documents');
  * Tracks the Y.Doc, resolved extensions (with required whenReady/dispose),
  * the updatedAt observer teardown, and the composite whenReady promise.
  */
-type DocEntry<
-	TDocExtensions extends Record<string, unknown>,
-	TAwarenessDefinitions extends AwarenessDefinitions,
-> = {
+type DocEntry<TBinding extends ContentHandle = ContentHandle> = {
 	ydoc: Y.Doc;
 	// biome-ignore lint/suspicious/noExplicitAny: runtime storage uses wide type
 	extensions: Record<string, Extension<any>>;
 	unobserve: () => void;
-	whenReady: Promise<DocumentHandle<TDocExtensions, TAwarenessDefinitions>>;
+	whenReady: Promise<TBinding>;
 };
 
 /**
@@ -98,7 +91,7 @@ type DocEntry<
  */
 export type CreateDocumentsConfig<
 	TRow extends BaseRow,
-	TAwarenessDefinitions extends AwarenessDefinitions = Record<string, never>,
+	TBinding extends ContentHandle = ContentHandle,
 > = {
 	/**
 	 * The workspace identifier. Passed through to `DocumentContext.id`.
@@ -114,6 +107,8 @@ export type CreateDocumentsConfig<
 	documentName: string;
 	/** Column name storing the Y.Doc GUID. */
 	guidKey: keyof TRow & string;
+	/** Content strategy — receives the document Y.Doc, returns the content object from `open()`. */
+	content: ContentStrategy<TBinding>;
 	/**
 	 * Called on every content Y.Doc change (local and remote). Return the
 	 * fields to write to the table row. The row write fires `table.observe`,
@@ -130,9 +125,8 @@ export type CreateDocumentsConfig<
 	 * Each registration has a key and factory.
 	 */
 	documentExtensions?: DocumentExtensionRegistration[];
-	/** Optional typed awareness schemas for this document scope. */
-	awarenessDefinitions?: TAwarenessDefinitions;
 };
+
 
 /**
  * Create a runtime documents manager — a bidirectional link between table rows
@@ -149,26 +143,25 @@ export type CreateDocumentsConfig<
  */
 export function createDocuments<
 	TRow extends BaseRow,
-	TDocExtensions extends Record<string, unknown> = Record<string, unknown>,
-	TAwarenessDefinitions extends AwarenessDefinitions = Record<string, never>,
+	TBinding extends ContentHandle = ContentHandle,
 >(
-	config: CreateDocumentsConfig<TRow, TAwarenessDefinitions>,
-): Documents<TRow, TDocExtensions, TAwarenessDefinitions> {
+	config: CreateDocumentsConfig<TRow, TBinding>,
+): Documents<TRow, TBinding> {
 	const {
 		id,
 		tableName,
 		documentName,
 		guidKey,
+		content,
 		onUpdate,
 		tableHelper,
 		ydoc: workspaceYdoc,
 		documentExtensions = [],
-		awarenessDefinitions,
 	} = config;
 
 	const openDocuments = new Map<
 		string,
-		DocEntry<TDocExtensions, TAwarenessDefinitions>
+		DocEntry<TBinding>
 	>();
 
 	/**
@@ -191,10 +184,10 @@ export function createDocuments<
 		}
 	});
 
-	const documents: Documents<TRow, TDocExtensions, TAwarenessDefinitions> = {
+	const documents: Documents<TRow, TBinding> = {
 		async open(
 			input: TRow | string,
-		): Promise<DocumentHandle<TDocExtensions, TAwarenessDefinitions>> {
+		): Promise<TBinding> {
 			const guid = typeof input === 'string' ? input : String(input[guidKey]);
 
 			const existing = openDocuments.get(guid);
@@ -202,11 +195,7 @@ export function createDocuments<
 
 			const contentYdoc = new Y.Doc({ guid, gc: false });
 			const contentAwareness = new Awareness(contentYdoc);
-			const awareness = createAwareness(
-				contentAwareness,
-				(awarenessDefinitions ?? {}) as TAwarenessDefinitions,
-			);
-			const timeline = createTimeline(contentYdoc);
+			const contentBinding = content(contentYdoc);
 
 			// Call document extension factories synchronously.
 			// IMPORTANT: No await between openDocuments.get() and openDocuments.set() — ensures
@@ -225,7 +214,6 @@ export function createDocuments<
 						tableName,
 						documentName,
 						ydoc: contentYdoc,
-						timeline,
 						awareness: { raw: contentAwareness },
 						whenReady:
 							whenReadyPromises.length === 0
@@ -289,20 +277,12 @@ export function createDocuments<
 				whenReadyPromises.length === 0
 					? Promise.resolve()
 					: Promise.all(whenReadyPromises).then(() => {});
-			const handle = Object.assign(timeline, {
-				id,
-				tableName,
-				documentName,
-				timeline,
-				awareness,
-				extensions: resolvedExtensions,
-				whenReady: compositeWhenReady,
-			}) as DocumentHandle<TDocExtensions, TAwarenessDefinitions>;
-			const whenReady =
+			// Build the internal entry — consumers get contentBinding only
+			const whenReady: Promise<TBinding> =
 				whenReadyPromises.length === 0
-					? Promise.resolve(handle)
+					? Promise.resolve(contentBinding)
 					: compositeWhenReady
-							.then(() => handle)
+							.then(() => contentBinding)
 							.catch(async (err) => {
 								const errors = await disposeLifo(disposers);
 								unobserve();

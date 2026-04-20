@@ -1,6 +1,6 @@
 import { AnalyticsServiceLive } from './analytics';
+import { AudioBlobStoreLive } from './blob-store';
 import * as completions from './completion';
-import { DbServiceLive } from './db';
 import { DownloadServiceLive } from './download';
 import { LocalShortcutManagerLive } from './local-shortcut-manager';
 import { NotificationServiceLive } from './notifications';
@@ -19,7 +19,7 @@ export const services = {
 	analytics: AnalyticsServiceLive,
 	text: TextServiceLive,
 	completions,
-	db: DbServiceLive,
+	blobs: { audio: AudioBlobStoreLive },
 	download: DownloadServiceLive,
 	localShortcutManager: LocalShortcutManagerLive,
 	notification: NotificationServiceLive,

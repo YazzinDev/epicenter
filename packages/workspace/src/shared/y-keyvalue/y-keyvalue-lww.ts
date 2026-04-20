@@ -95,18 +95,35 @@
  *
  * **`bulkDelete()` scans once** to collect all matching indices, then batch-deletes
  * right-to-left. Unlike `bulkSet`, it does NOT defer anything to the observer—
- * deletions happen directly, no DEDUP_ORIGIN needed. The optimization is purely
- * scan efficiency: one `toArray()` instead of N.
+ * deletions happen directly, no DEDUP_ORIGIN needed.
  *
  * ```
  * Single ops (fine for individual use, O(n²) in a loop):
  *   set():    deleteEntryByKey O(n) + push O(1) → observer: no conflicts
  *   delete(): deleteEntryByKey O(n)              → observer: processes deletion
  *
- * Bulk ops (O(n) total regardless of batch size):
+ * Bulk ops:
  *   bulkSet():    push × N + observer resolves all via Map   [DEDUP_ORIGIN]
  *   bulkDelete(): scan once + batch delete right-to-left     [no DEDUP_ORIGIN]
  * ```
+ *
+ * ## Real-World Bottlenecks (Measured)
+ *
+ * The cost profile is NOT what Big-O suggests. `toArray()` is ~0.04ms even at
+ * 25K entries—negligible. The actual bottleneck is `Y.Array.delete(index)`, which
+ * walks Yjs's internal linked list. This cost scales non-linearly within large
+ * transactions due to structural fragmentation:
+ *
+ * - **For `bulkDelete`**: Deleting 25K items in one transaction is ~3x slower than
+ *   chunking into groups of 2500. The Yjs linked-list walk compounds when many
+ *   deletes happen in a single transaction.
+ * - **For `bulkSet`**: Inserting 25K items in one call forces the observer to build
+ *   one massive entryIndexMap. Chunking into groups of 1000 is ~10x faster.
+ *
+ * Because of this, the `TableHelper` layer (in `create-table.ts`) wraps these
+ * methods with chunked async loops. The optimal chunk sizes differ:
+ * - `bulkSet`: 1000 (observer conflict resolution is the bottleneck)
+ * - `bulkDelete`: 2500 (Yjs linked-list deletion is the bottleneck)
  *
  * The observer's conflict resolution logic is shared with multi-device sync—when
  * two clients set the same key while offline, the observer resolves that conflict
@@ -732,7 +749,11 @@ export class YKeyValueLww<T> {
 	 * performs the deletions directly in one transaction. The observer fires once,
 	 * sees the deletions, and updates `_map`. No conflicts, no DEDUP_ORIGIN needed.
 	 *
-	 * The optimization here is purely scan efficiency: one `toArray()` instead of N.
+	 * Note: despite what Big-O analysis might suggest, the `toArray()` scan is NOT
+	 * the bottleneck (~0.04ms at 25K entries). The real cost is the `yarray.delete()`
+	 * calls inside the transaction—each one walks Yjs's internal linked list. This is
+	 * why the `TableHelper` layer chunks calls to this method rather than passing all
+	 * IDs at once (large single transactions are slower due to linked-list fragmentation).
 	 *
 	 * ## Why right-to-left?
 	 *

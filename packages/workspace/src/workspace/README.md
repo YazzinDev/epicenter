@@ -122,11 +122,11 @@ For detailed rationale on all of this, see [the guide](docs/articles/20260127T12
 
 ## Document Content
 
-Tables with `.withDocument()` create per-row Y.Docs for content. These Y.Docs use a **timeline model** (`Y.Array('timeline')` with nested typed entries) in `packages/workspace/src/timeline/`.
+Tables with `.withDocument()` create per-row Y.Docs for content. The content type is determined by a content strategy passed to `.withDocument()`: `plainText` returns `Y.Text`, `richText` returns `Y.XmlFragment`, and `timeline` returns a `Timeline` with mode-switching support.
 
-The handle is the canonical interface: `handle.read()`/`handle.writeText()` for simple string I/O, `handle.asText()` for Y.Text editor binding, `handle.asRichText()` for Y.XmlFragment richtext binding, `handle.asSheet()` for spreadsheet binding, `handle.timeline` for advanced operations, and `handle.batch()` for batching mutations. The `as*()` methods automatically convert between content modes—all conversions are infallible.
+The handle is the canonical interface. Content is accessed via `handle.content`—fully typed by the strategy. For `timeline` strategy: `handle.content.read()`/`handle.content.write()` for string I/O, `handle.content.asText()` for Y.Text editor binding, `handle.content.asRichText()` for Y.XmlFragment binding, `handle.content.asSheet()` for spreadsheet binding, and `handle.content.batch()` for batching mutations. For `plainText`/`richText`, `handle.content` IS the Yjs shared type—bind it directly to your editor.
 
-See `specs/20260313T230000-promote-timeline-to-workspace.md` for the full design.
+See `specs/20260418T120000-withdocument-content-strategy.md` for the full design.
 
 ## Testing
 

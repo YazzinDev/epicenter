@@ -1,11 +1,11 @@
 # Y.js Abstraction Leaks Cost More Than the Abstraction
 
-You build a nice typed API over Y.js. `handle.read()`, `handle.write()`, `tables.posts.set()`. Clean, minimal surface area. Then one consumer needs to append text to a document, the typed API doesn't have `append()`, and they write this:
+You build a nice typed API over Y.js. `handle.content.read()`, `handle.content.write()`, `tables.posts.set()`. Clean, minimal surface area. Then one consumer needs to append text to a document, the typed API doesn't have `append()`, and they write this:
 
 ```typescript
-const entry = handle.currentEntry;
+const entry = handle.content.currentEntry;
 if (entry?.type === 'text') {
-    handle.batch(() => entry.content.insert(entry.content.length, text));
+    handle.content.batch(() => entry.content.insert(entry.content.length, text));
 }
 ```
 
@@ -21,7 +21,7 @@ The pattern has a consistent shape. A consumer can't do something through the ty
 
 ```typescript
 // Step 1: access internals
-const validated = handle.currentEntry;
+const validated = handle.content.currentEntry;
 
 // Step 2: branch on mode (consumer knows about internal content types)
 if (validated?.type !== 'text') {
@@ -30,15 +30,15 @@ if (validated?.type !== 'text') {
 }
 
 // Step 3: raw CRDT mutation
-handle.batch(() => validated.content.insert(validated.content.length, text));
+handle.content.batch(() => validated.content.insert(validated.content.length, text));
 ```
 
-Each step is a violation. The consumer inspects `currentEntry` (an internal representation), branches on `type` (a mode the abstraction should own), and calls `Y.Text.insert()` (a raw CRDT operation). The `handle.batch()` wrapper makes it look tidy, but the real work bypasses the Timeline entirely.
+Each step is a violation. The consumer inspects `currentEntry` (an internal representation), branches on `type` (a mode the abstraction should own), and calls `Y.Text.insert()` (a raw CRDT operation). The `handle.content.batch()` wrapper makes it look tidy, but the real work bypasses the Timeline entirely.
 
 Compare to what it should look like:
 
 ```typescript
-handle.append(text);
+handle.content.appendText(text);
 ```
 
 One line, no Y.js knowledge. The Timeline owns the "am I in text mode?" decision and the "insert at end" operation.
@@ -51,7 +51,7 @@ After auditing a real codebase, these patterns reliably predict abstraction leak
 
 **Mode branching in consumer code.** `if (entry.type === 'text') ... else if (entry.type === 'sheet')` outside the module that owns content modes. The consumer is making a decision the abstraction should make.
 
-**Raw mutations inside batch callbacks.** `handle.batch(() => ytext.insert(...))` means the consumer is doing CRDT operations the handle should encapsulate. `batch()` is for grouping *high-level* operations (multiple `table.delete()` calls), not for wrapping raw Y.js mutations.
+**Raw mutations inside batch callbacks.** `handle.content.batch(() => ytext.insert(...))` means the consumer is doing CRDT operations the handle should encapsulate. `batch()` is for grouping *high-level* operations (multiple `table.delete()` calls), not for wrapping raw Y.js mutations.
 
 **Internal helpers on the public API.** Functions like `parseSheetFromCsv(columns: Y.Map<Y.Map<string>>, rows: Y.Map<Y.Map<string>>)` on a package's root export. The parameters are raw Y.js types—you can't call this function without first breaking the abstraction to get those references.
 
@@ -64,8 +64,8 @@ Y.js code naturally settles into three layers, and each has clear rules about wh
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  Consumer Code (apps, features)                          │
-│  Uses: handle.read(), handle.write(), tables.*.set()     │
-│  MAY bind to Y.Text/Y.XmlFragment returned by as*()     │
+│  Uses: handle.content.read(), handle.content.write(), tables.*.set()     │
+│  MAY bind to Y.Text/Y.XmlFragment from handle.content or as*()  │
 │  NEVER constructs, casts, or mutates Y.js types directly │
 ├──────────────────────────────────────────────────────────┤
 │  Format Bridges (markdown ↔ Y.XmlFragment, CSV ↔ Y.Map) │
@@ -100,7 +100,7 @@ The fix was simple: remove from all barrel exports. The functions stay in `timel
 
 Not every Y.js import outside the internals is a leak. Three cases are legitimate:
 
-**Editor binding.** `handle.asText()` returns a `Y.Text` specifically so editors can bind to it. The consumer *needs* the live CRDT reference for collaborative editing. Same for `asRichText()` returning `Y.XmlFragment` and `asSheet()` returning column/row `Y.Map`s.
+**Editor binding.** `handle.content.asText()` returns a `Y.Text` specifically so editors can bind to it. The consumer *needs* the live CRDT reference for collaborative editing. Same for `handle.content.asRichText()` returning `Y.XmlFragment` and `handle.content.asSheet()` returning column/row `Y.Map`s. With `plainText`/`richText` strategies, `handle.content` IS the Yjs shared type directly.
 
 **Sync and persistence infrastructure.** Code that manages Y.Doc replication (`Y.encodeStateVector`, `Y.applyUpdate`, `Y.snapshot`) operates at the document transport level. It has no business using Timeline or Table abstractions.
 

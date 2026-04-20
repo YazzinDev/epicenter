@@ -3,7 +3,7 @@
 /**
  * Reddit Import Test Script
  *
- * Run with: bun packages/workspace/scripts/reddit-import-test.ts [path-to-zip]
+ * Run with: bun packages/workspace/scripts/tools/reddit-import-test.ts [path-to-zip]
  *
  * If no path provided, looks for reddit_export.zip in the project root.
  */
@@ -12,8 +12,8 @@ import {
 	importRedditExport,
 	previewRedditExport,
 	redditWorkspace,
-} from '../src/ingest/reddit/index.js';
-import { createWorkspace } from '../src/workspace/index.js';
+} from '../../src/ingest/reddit/index.js';
+import { createWorkspace } from '../../src/workspace/index.js';
 
 async function main() {
 	const zipPath = process.argv[2] ?? 'reddit_export.zip';

@@ -1,11 +1,11 @@
 /**
  * Reactive recording state backed by Yjs workspace tables.
  *
- * Replaces TanStack Query + DbService for recording CRUD. SvelteMap provides
+ * Replaces TanStack Query + BlobStore for recording CRUD. SvelteMap provides
  * per-key reactivity—updating one recording doesn't re-render the entire list.
  * The Yjs observer fires on local writes, remote CRDT sync, and migration.
  *
- * Audio blob access still goes through DbService (blobs are too large for CRDTs).
+ * Audio blob access still goes through BlobStore (blobs are too large for CRDTs).
  *
  * @example
  * ```typescript
@@ -22,6 +22,7 @@
  */
 import { fromTable } from '@epicenter/svelte';
 import { workspace } from '$lib/client';
+import type { Recording } from '$lib/workspace';
 
 /** Re-exported from the workspace definition for consumer convenience. */
 export type { Recording } from '$lib/workspace';
@@ -100,6 +101,17 @@ function createRecordings() {
 		 */
 		delete(id: string) {
 			workspace.tables.recordings.delete(id);
+		},
+
+		/**
+		 * Delete multiple recordings by ID in a single optimized scan.
+		 *
+		 * Uses the workspace table's bulkDelete (O(n) single scan) instead of
+		 * looping delete calls (O(n²)). Callers should clean up audio URLs
+		 * and audio blobs separately via `services.blobs.audio.delete(ids)`.
+		 */
+		async bulkDelete(ids: string[]) {
+			await workspace.tables.recordings.bulkDelete(ids);
 		},
 
 		/** Total number of recordings. */

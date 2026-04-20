@@ -4,7 +4,6 @@
  * This root export provides the full workspace API and shared utilities.
  *
  * - `@epicenter/workspace` - Full API (workspace creation, tables, KV, extensions)
- * - `@epicenter/workspace/static` - Alias (kept for backward compatibility)
  * - `@epicenter/workspace/extensions` - Extension plugins (persistence, sync)
  *
  * @example
@@ -25,6 +24,7 @@
 
 export type { Action, Actions, Mutation, Query } from './shared/actions';
 export {
+	ACTION_BRAND,
 	defineMutation,
 	defineQuery,
 	isAction,
@@ -93,6 +93,7 @@ export type {
 } from './timeline';
 export {
 	computeMidpoint,
+	generateInitialOrders,
 	type Timeline,
 } from './timeline';
 // ════════════════════════════════════════════════════════════════════════════
@@ -109,6 +110,7 @@ export { KV_KEY, TableKey } from './workspace/ydoc-keys';
 export { defineKv } from './workspace/define-kv';
 export { defineTable } from './workspace/define-table';
 export { defineWorkspace } from './workspace/define-workspace';
+export { plainText, richText, timeline } from './workspace/strategies';
 
 // ════════════════════════════════════════════════════════════════════════════
 // WORKSPACE CREATION
@@ -143,11 +145,13 @@ export type {
 	AwarenessHelper,
 	AwarenessState,
 	BaseRow,
-	DocumentClient,
+	ContentHandle,
+	ContentStrategy,
 	DocumentConfig,
-	DocumentHandle,
 	Documents,
 	DocumentsHelper,
+	PlainTextHandle,
+	RichTextHandle,
 	ExtensionContext,
 	ExtensionFactory,
 	GetResult,

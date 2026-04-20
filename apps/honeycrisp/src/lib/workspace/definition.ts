@@ -13,6 +13,7 @@ import {
 	DateTimeString,
 	defineTable,
 	defineWorkspace,
+	richText,
 	type InferTableRow,
 } from '@epicenter/workspace';
 import { type } from 'arktype';
@@ -104,6 +105,7 @@ const notesTable = defineTable(
 		}
 	})
 	.withDocument('body', {
+		content: richText,
 		guid: 'id',
 		onUpdate: () => ({ updatedAt: DateTimeString.now() }),
 	});

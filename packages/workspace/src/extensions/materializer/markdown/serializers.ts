@@ -1,6 +1,6 @@
 import slugify from '@sindresorhus/slugify';
 import filenamify from 'filenamify';
-import { markdown, type SerializeResult } from './markdown.js';
+import { type SerializeResult, toMarkdown } from './markdown.js';
 
 /** Max slug length before the ID suffix. */
 const MAX_SLUG_LENGTH = 50;
@@ -31,7 +31,10 @@ export function toIdFilename(id: string): string {
  * // 'abc123.md'
  * ```
  */
-export function toSlugFilename(title: string | undefined | null, id: string): string {
+export function toSlugFilename(
+	title: string | undefined | null,
+	id: string,
+): string {
 	if (!title || title.trim().length === 0) {
 		return toIdFilename(id);
 	}
@@ -44,21 +47,20 @@ export function toSlugFilename(title: string | undefined | null, id: string): st
 /**
  * Create a serializer that uses a row field to generate `{slug}-{id}.md` filenames.
  * All row fields are written to frontmatter.
- *
- * @remarks Produces markdown output via markdown() internally.
+ * @remarks Produces markdown output via toMarkdown() internally.
  */
 export function slugFilename(
 	fieldName: string,
 ): (row: Record<string, unknown>) => SerializeResult {
 	return (row) => {
 		const titleValue = row[fieldName];
-		return markdown({
-			frontmatter: { ...row },
+		return {
 			filename: toSlugFilename(
 				typeof titleValue === 'string' ? titleValue : undefined,
 				String(row.id),
 			),
-		});
+			content: toMarkdown({ ...row }),
+		};
 	};
 }
 
@@ -66,7 +68,7 @@ export function slugFilename(
  * Create a serializer that moves one field into the markdown body and keeps the
  * remaining row fields in frontmatter.
  *
- * @remarks Produces markdown output via markdown() internally.
+ * @remarks Produces markdown output via toMarkdown() internally.
  */
 export function bodyField(
 	fieldName: string,
@@ -74,13 +76,14 @@ export function bodyField(
 	return (row) => {
 		const { [fieldName]: bodyValue, ...frontmatter } = row;
 
-		return markdown({
-			frontmatter,
-			body:
+		return {
+			filename: toIdFilename(String(row.id)),
+			content: toMarkdown(
+				frontmatter,
 				bodyValue !== undefined && bodyValue !== null
 					? String(bodyValue)
 					: undefined,
-			filename: toIdFilename(String(row.id)),
-		});
+			),
+		};
 	};
 }

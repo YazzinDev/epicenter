@@ -50,7 +50,7 @@ export const recordingActions = {
 			onConfirm: () => {
 				// Clean up audio URLs before deleting to prevent memory leaks
 				for (const recording of arr) {
-					services.db.recordings.revokeAudioUrl(recording.id);
+					services.blobs.audio.revokeUrl(recording.id);
 					recordings.delete(recording.id);
 				}
 				rpc.notify.success({

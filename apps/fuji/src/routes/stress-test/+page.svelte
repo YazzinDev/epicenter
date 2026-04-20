@@ -14,11 +14,10 @@
 	const COUNTS = [1_000, 10_000] as const;
 
 	/**
-	 * Small chunk size so the browser event loop yields between chunks,
-	 * giving Svelte a chance to re-render the progress bar. 1000 entries
-	 * per chunk would mean 1 chunk for 1k count—no intermediate updates.
+	 * Small chunk size for bulkSet so the browser event loop yields between
+	 * chunks, giving Svelte a chance to re-render the progress bar.
 	 */
-	const CHUNK_SIZE = 100;
+	const INSERT_CHUNK_SIZE = 100;
 
 	const TITLES = [
 		'Morning Reflections',
@@ -166,7 +165,7 @@
 
 			const insertStart = performance.now();
 			await workspace.tables.entries.bulkSet(rows, {
-				chunkSize: CHUNK_SIZE,
+				chunkSize: INSERT_CHUNK_SIZE,
 				onProgress: (p) => {
 					progress = p;
 				},
@@ -217,9 +216,7 @@
 			);
 			const ids = stressEntries.map((e) => e.id);
 
-			await workspace.tables.entries.bulkDelete(ids, {
-				chunkSize: CHUNK_SIZE,
-			});
+			await workspace.tables.entries.bulkDelete(ids);
 
 			results = null;
 			toast.success(`Cleared ${ids.length.toLocaleString()} stress-test entries`);

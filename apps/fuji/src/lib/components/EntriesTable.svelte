@@ -27,7 +27,7 @@
 
 	let { entries, title }: { entries: Entry[]; title?: string } = $props();
 
-	const columns: ColumnDef<Entry>[] = [
+	const columns = [
 		{
 			id: 'title',
 			accessorKey: 'title',
@@ -132,7 +132,7 @@
 				}),
 			cell: ({ getValue }) => relativeTime(getValue<string>()),
 		},
-	];
+	] satisfies ColumnDef<Entry>[];
 
 	const sorting = $derived<SortingState>([
 		{ id: viewState.sortBy, desc: viewState.sortBy !== 'title' },

@@ -5,14 +5,15 @@
  * repeats for several cycles, then measures the final Y.Doc binary size
  * and writes it to disk as a .yjs file.
  *
- * Run: bun packages/workspace/scripts/stress-test-static.ts
+ * Run: bun packages/workspace/scripts/yjs-benchmarks/stress-add-delete.ts
  */
 
 import { unlinkSync } from 'node:fs';
 import { type } from 'arktype';
 import * as Y from 'yjs';
-import { createTables } from '../src/workspace/create-tables.js';
-import { defineTable } from '../src/workspace/index.js';
+import { createTables } from '../../src/workspace/create-tables.js';
+import { defineTable } from '../../src/workspace/index.js';
+import { formatBytes, measureTime } from './helpers.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Config — tweak these
@@ -43,18 +44,6 @@ const eventDefinition = defineTable(
 
 function generateId(index: number): string {
 	return `evt-${index.toString().padStart(6, '0')}`;
-}
-
-function formatBytes(bytes: number): string {
-	if (bytes < 1024) return `${bytes} B`;
-	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-	return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
-}
-
-function measureTime<T>(fn: () => T): { result: T; ms: number } {
-	const start = performance.now();
-	const result = fn();
-	return { result, ms: performance.now() - start };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

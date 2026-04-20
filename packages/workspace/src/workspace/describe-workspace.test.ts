@@ -264,4 +264,61 @@ describe('describeWorkspace', () => {
 		);
 		expect(createAction?.title).toBeUndefined();
 	});
+
+	test('workspace without extensions returns empty extensions record', () => {
+		const posts = defineTable(type({ id: 'string', title: 'string', _v: '1' }));
+
+		const client = createWorkspace({
+			id: 'no-extensions',
+			tables: { posts },
+		});
+
+		const descriptor = describeWorkspace(client);
+
+		expect(descriptor.extensions).toEqual({});
+	});
+
+	test('workspace extensions with defineQuery/defineMutation are discovered', () => {
+		const posts = defineTable(type({ id: 'string', title: 'string', _v: '1' }));
+
+		const client = createWorkspace({
+			id: 'with-extensions',
+			tables: { posts },
+		}).withWorkspaceExtension('myExt', () => ({
+			searchStuff: defineQuery({
+				title: 'Search Stuff',
+				description: 'Search for stuff',
+				handler: () => [],
+			}),
+			rebuildStuff: defineMutation({
+				title: 'Rebuild Stuff',
+				handler: () => {},
+			}),
+			// Non-action properties should be ignored
+			whenReady: Promise.resolve(),
+			dispose() {},
+		}));
+
+		const descriptor = describeWorkspace(client);
+
+		// Extensions discovered
+		expect(Object.keys(descriptor.extensions)).toEqual(['myExt']);
+		expect(descriptor.extensions.myExt).toHaveLength(2);
+
+		const searchAction = descriptor.extensions.myExt?.find(
+			(a) => a.path.join('.') === 'searchStuff',
+		);
+		expect(searchAction).toBeDefined();
+		expect(searchAction?.type).toBe('query');
+		expect(searchAction?.title).toBe('Search Stuff');
+
+		const rebuildAction = descriptor.extensions.myExt?.find(
+			(a) => a.path.join('.') === 'rebuildStuff',
+		);
+		expect(rebuildAction).toBeDefined();
+		expect(rebuildAction?.type).toBe('mutation');
+
+		// Actions from extensions are NOT in the top-level actions array
+		expect(descriptor.actions).toEqual([]);
+	});
 });

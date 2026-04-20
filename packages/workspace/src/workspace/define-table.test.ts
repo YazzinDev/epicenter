@@ -12,6 +12,7 @@
 import { describe, expect, test } from 'bun:test';
 import { type } from 'arktype';
 import { defineTable } from './define-table.js';
+import { timeline } from './strategies.js';
 
 describe('defineTable', () => {
 	describe('shorthand syntax', () => {
@@ -250,6 +251,7 @@ describe('defineTable', () => {
 			const files = defineTable(
 				type({ id: 'string', name: 'string', updatedAt: 'number', _v: '1' }),
 			).withDocument('content', {
+				content: timeline,
 				guid: 'id',
 				onUpdate: () => ({ updatedAt: Date.now() }),
 			});
@@ -267,6 +269,7 @@ describe('defineTable', () => {
 					_v: '1',
 				}),
 			).withDocument('content', {
+				content: timeline,
 				guid: 'docId',
 				onUpdate: () => ({ modifiedAt: Date.now() }),
 			});
@@ -286,10 +289,12 @@ describe('defineTable', () => {
 				}),
 			)
 				.withDocument('body', {
+					content: timeline,
 					guid: 'bodyDocId',
 					onUpdate: () => ({ updatedAt: Date.now() }),
 				})
 				.withDocument('cover', {
+					content: timeline,
 					guid: 'coverDocId',
 					onUpdate: () => ({ updatedAt: Date.now() }),
 				});
@@ -312,6 +317,7 @@ describe('defineTable', () => {
 			const files = defineTable(
 				type({ id: 'string', name: 'string', updatedAt: 'number', _v: '1' }),
 			).withDocument('content', {
+				content: timeline,
 				guid: 'id',
 				onUpdate: () => ({ updatedAt: Date.now() }),
 			});
@@ -350,6 +356,7 @@ describe('defineTable', () => {
 				type({ id: 'string', updatedAt: 'number', _v: '1' }),
 			);
 			files.withDocument('content', {
+				content: timeline,
 				// @ts-expect-error guid key must exist on the row schema
 				guid: 'missing',
 				onUpdate: () => ({}),
@@ -366,11 +373,12 @@ describe('defineTable', () => {
 					_v: '1',
 				}),
 			).withDocument('body', {
+				content: timeline,
 				guid: 'bodyDocId',
 				onUpdate: () => ({ updatedAt: Date.now() }),
 			});
 			notes.withDocument('cover', {
-				// @ts-expect-error bodyDocId is already claimed by the 'body' document
+				content: timeline,
 				guid: 'bodyDocId',
 				onUpdate: () => ({ updatedAt: Date.now() }),
 			});
@@ -381,6 +389,7 @@ describe('defineTable', () => {
 				type({ id: 'string', name: 'string', updatedAt: 'number', _v: '1' }),
 			);
 			files.withDocument('content', {
+				content: timeline,
 				guid: 'id',
 				// @ts-expect-error nonExistent is not a column on the row
 				onUpdate: () => ({ nonExistent: 123 }),

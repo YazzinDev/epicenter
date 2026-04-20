@@ -91,8 +91,8 @@ export function createSkillsWorkspace() {
 			handler: async ({ id }) => {
 				const skill = client.tables.skills.find((s) => s.id === id);
 				if (!skill) return null;
-				const handle = await client.documents.skills.instructions.open(id);
-				return { skill, instructions: handle.read() };
+				const content = await client.documents.skills.instructions.open(id);
+				return { skill, instructions: content.read() };
 			},
 		}),
 
@@ -113,19 +113,19 @@ export function createSkillsWorkspace() {
 			handler: async ({ id }) => {
 				const skill = client.tables.skills.find((s) => s.id === id);
 				if (!skill) return null;
-				const instructionsHandle =
+				const instructionsContent =
 					await client.documents.skills.instructions.open(id);
 				const refs = client.tables.references.filter((r) => r.skillId === id);
 				const references = await Promise.all(
 					refs.map(async (ref) => {
-						const contentHandle =
+						const refContent =
 							await client.documents.references.content.open(ref.id);
-						return { path: ref.path, content: contentHandle.read() };
+						return { path: ref.path, content: refContent.read() };
 					}),
 				);
 				return {
 					skill,
-					instructions: instructionsHandle.read(),
+					instructions: instructionsContent.read(),
 					references: references.sort((a, b) => a.path.localeCompare(b.path)),
 				};
 			},

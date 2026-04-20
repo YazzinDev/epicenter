@@ -1,5 +1,5 @@
-import { mkdir } from 'node:fs/promises';
 import * as Y from 'yjs';
+import { formatBytes } from './helpers.js';
 
 type BenchmarkResult = {
 	name: string;
@@ -8,15 +8,6 @@ type BenchmarkResult = {
 	operations: number;
 };
 
-function formatBytes(bytes: number): string {
-	if (bytes < 1024) return `${bytes} B`;
-	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-	return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-function createDoc(gc: boolean): Y.Doc {
-	return new Y.Doc({ gc });
-}
 
 /**
  * Benchmark 1: Y.Text Heavy Editing
@@ -26,7 +17,7 @@ function benchmarkTextEditing(
 	gc: boolean,
 	operations: number,
 ): BenchmarkResult {
-	const doc = createDoc(gc);
+	const doc = new Y.Doc({ gc });
 	const text = doc.getText('content');
 
 	for (let i = 0; i < operations; i++) {
@@ -74,7 +65,7 @@ function benchmarkTextEditing(
  * orphaning the old Y.Map (which becomes a tombstone).
  */
 function benchmarkBadPattern(gc: boolean, operations: number): BenchmarkResult {
-	const doc = createDoc(gc);
+	const doc = new Y.Doc({ gc });
 	const root = doc.getMap('workspace');
 
 	const recordIds = Array.from({ length: 100 }, (_, i) => `record-${i}`);
@@ -124,7 +115,7 @@ function benchmarkGoodPattern(
 	gc: boolean,
 	operations: number,
 ): BenchmarkResult {
-	const doc = createDoc(gc);
+	const doc = new Y.Doc({ gc });
 	const root = doc.getMap('workspace');
 
 	const recordIds = Array.from({ length: 100 }, (_, i) => `record-${i}`);
@@ -177,7 +168,7 @@ function benchmarkFlatPattern(
 	gc: boolean,
 	operations: number,
 ): BenchmarkResult {
-	const doc = createDoc(gc);
+	const doc = new Y.Doc({ gc });
 	const root = doc.getMap('workspace');
 
 	const recordIds = Array.from({ length: 100 }, (_, i) => `record-${i}`);
@@ -211,7 +202,7 @@ function benchmarkFlatPattern(
  * Baseline comparison with no deletions
  */
 function benchmarkAppendOnly(gc: boolean, operations: number): BenchmarkResult {
-	const doc = createDoc(gc);
+	const doc = new Y.Doc({ gc });
 	const text = doc.getText('log');
 
 	for (let i = 0; i < operations; i++) {
@@ -299,32 +290,6 @@ async function runBenchmarks() {
 		);
 		console.log();
 	}
-
-	// Save encoded documents for inspection
-	const outputDir = new URL('./benchmark-output/', import.meta.url).pathname;
-	await mkdir(outputDir, { recursive: true });
-
-	for (const result of results) {
-		const doc = createDoc(result.gcEnabled);
-
-		// Re-run the benchmark to get the actual doc (bit wasteful but keeps code simple)
-		if (result.name.includes('Text')) {
-			const text = doc.getText('content');
-			for (let i = 0; i < 1000; i++) {
-				// Small sample
-				text.insert(Math.floor(Math.random() * (text.length + 1)), 'x');
-				if (text.length > 0 && Math.random() > 0.5) {
-					text.delete(Math.floor(Math.random() * text.length), 1);
-				}
-			}
-		}
-
-		const encoded = Y.encodeStateAsUpdate(doc);
-		const filename = `${result.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-gc-${result.gcEnabled ? 'on' : 'off'}.bin`;
-		await Bun.write(`${outputDir}${filename}`, encoded);
-	}
-
-	console.log(`Sample documents saved to: ${outputDir}`);
 }
 
 runBenchmarks().catch(console.error);

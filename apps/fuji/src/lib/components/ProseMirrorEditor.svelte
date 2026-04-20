@@ -37,7 +37,7 @@
 
 	// ─── Schema ──────────────────────────────────────────────────────────────
 
-	const extraMarks: Record<string, MarkSpec> = {
+	const extraMarks = {
 		strikethrough: {
 			parseDOM: [
 				{ tag: 's' },
@@ -54,7 +54,7 @@
 				return ['u', 0];
 			},
 		},
-	};
+	} satisfies Record<string, MarkSpec>;
 
 	const schema = new Schema({
 		nodes: addListNodes(basicSchema.spec.nodes, 'paragraph block*', 'block'),

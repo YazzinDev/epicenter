@@ -24,7 +24,7 @@ pub mod command;
 use command::{execute_command, spawn_command};
 
 pub mod markdown;
-use markdown::{bulk_delete_files, count_markdown_files, read_markdown_files, write_markdown_files};
+use markdown::{count_markdown_files, delete_files_in_directory, read_markdown_files, write_markdown_files};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[tokio::main]
@@ -172,7 +172,7 @@ pub async fn run() {
         // Filesystem utilities
         read_markdown_files,
         count_markdown_files,
-        bulk_delete_files,
+        delete_files_in_directory,
         write_markdown_files,
     ]);
 

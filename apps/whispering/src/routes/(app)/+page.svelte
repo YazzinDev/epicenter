@@ -166,7 +166,7 @@
 		unlistenDragDrop?.();
 		// Clean up audio URL when component unmounts to prevent memory leaks
 		if (latestRecording?.id) {
-			services.db.recordings.revokeAudioUrl(latestRecording.id);
+			services.blobs.audio.revokeUrl(latestRecording.id);
 		}
 	});
 
@@ -376,7 +376,7 @@
 						description: 'Are you sure you want to delete this recording?',
 						confirm: { text: 'Delete', variant: 'destructive' },
 						onConfirm: () => {
-							services.db.recordings.revokeAudioUrl(latestRecording.id);
+							services.blobs.audio.revokeUrl(latestRecording.id);
 							recordings.delete(latestRecording.id);
 							rpc.notify.success({
 								title: 'Deleted recording!',

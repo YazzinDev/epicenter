@@ -1,8 +1,10 @@
 # `connectWorkspace` — One-Line Authenticated Workspace for Scripts
 
 **Date**: 2026-04-14
-**Status**: Draft
+**Status**: Superseded in part — 2026-04-18
 **Author**: AI-assisted
+
+> **2026-04-18 Update**: `connectWorkspace` no longer attaches filesystem persistence. It now chains only `unlock → sync` and is ephemeral by design. Rationale: scripts are short-lived and the sync handshake downloads the full doc on connect, so paying for a second SQLite writer only created lock contention with a concurrently running `epicenter start` daemon on the same workspace. Persistence remains the daemon's responsibility; see `epicenter.config.ts` examples. References below that show `persistence` in the chain are historical.
 
 ## Overview
 

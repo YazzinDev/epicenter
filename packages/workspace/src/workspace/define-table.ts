@@ -49,9 +49,10 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { CombinedStandardSchema } from '../shared/standard-schema.js';
 import { createUnionSchema } from './schema-union.js';
 import type {
-	AwarenessDefinitions,
 	BaseRow,
 	ClaimedDocumentColumns,
+	ContentHandle,
+	ContentStrategy,
 	DocumentConfig,
 	LastSchema,
 	StringKeysOf,
@@ -114,15 +115,15 @@ type TableDefinitionWithDocBuilder<
 			StringKeysOf<StandardSchemaV1.InferOutput<LastSchema<TVersions>>>,
 			ClaimedDocumentColumns<TDocuments>
 		>,
-		const TAwarenessDefs extends AwarenessDefinitions = Record<string, never>,
+		TBinding extends ContentHandle = ContentHandle,
 	>(
 		name: TName,
 		config: {
+			content: ContentStrategy<TBinding>;
 			guid: TGuid;
 			onUpdate: () => Partial<
 				Omit<StandardSchemaV1.InferOutput<LastSchema<TVersions>>, 'id'>
 			>;
-			awareness?: TAwarenessDefs;
 		},
 	): TableDefinitionWithDocBuilder<
 		TVersions,
@@ -132,7 +133,7 @@ type TableDefinitionWithDocBuilder<
 				DocumentConfig<
 					TGuid,
 					StandardSchemaV1.InferOutput<LastSchema<TVersions>>,
-					TAwarenessDefs
+					TBinding
 				>
 			>
 	>;
@@ -257,9 +258,9 @@ function attachDocumentBuilder<
 				documents: {
 					...def.documents,
 					[name]: {
+						content: config.content,
 						guid: config.guid,
 						onUpdate: config.onUpdate,
-						awareness: config.awareness,
 					},
 				},
 			});

@@ -1,7 +1,7 @@
 /**
  * Reactive transformation state backed by Yjs workspace tables.
  *
- * Replaces TanStack Query + DbService for transformation CRUD. The workspace
+ * Replaces TanStack Query + BlobStore for transformation CRUD. The workspace
  * model stores transformations as metadata rows (title, description, timestamps)
  * without embedded steps—steps live in a separate `transformationSteps` table.
  *
@@ -37,8 +37,7 @@ function createTransformations() {
 
 	// Memoize sorted array with $derived for referential stability.
 	const sorted = $derived(
-		[...map.values()]
-			.sort((a, b) => a.title.localeCompare(b.title)),
+		[...map.values()].sort((a, b) => a.title.localeCompare(b.title)),
 	);
 
 	return {

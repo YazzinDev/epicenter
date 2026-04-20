@@ -13,7 +13,7 @@ export const download = {
 		): Promise<Result<void, WhisperingError | DownloadError>> => {
 			// Fetch audio blob by ID
 			const { data: audioBlob, error: getAudioBlobError } =
-				await services.db.recordings.getAudioBlob(recording.id);
+				await services.blobs.audio.getBlob(recording.id);
 
 			if (getAudioBlobError) {
 				return WhisperingErr({

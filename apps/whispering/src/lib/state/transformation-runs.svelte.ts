@@ -5,8 +5,8 @@
  * Each run has a status lifecycle: running → completed | failed.
  *
  * During the transition period, new runs are written to workspace tables AND
- * DbService (for backward compatibility). Historical runs that weren't migrated
- * are still available via DbService queries.
+ * BlobStore (for backward compatibility). Historical runs that weren't migrated
+ * are still available via BlobStore queries.
  *
  * @example
  * ```typescript

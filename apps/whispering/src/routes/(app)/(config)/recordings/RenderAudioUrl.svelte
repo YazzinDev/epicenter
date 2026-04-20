@@ -13,7 +13,7 @@
 
 	onDestroy(() => {
 		// Clean up audio URL when component unmounts to prevent memory leaks
-		services.db.recordings.revokeAudioUrl(id);
+		services.blobs.audio.revokeUrl(id);
 	});
 </script>
 

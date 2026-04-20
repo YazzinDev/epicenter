@@ -9,7 +9,11 @@
  * @module
  */
 
-import { defineTable, type InferTableRow } from '@epicenter/workspace';
+import {
+	defineTable,
+	type InferTableRow,
+	plainText,
+} from '@epicenter/workspace';
 import { type } from 'arktype';
 
 /**
@@ -32,14 +36,13 @@ import { type } from 'arktype';
  * // Activate (tier 2)—inject instructions into context
  * const skill = ws.tables.skills.find(s => s.name === 'writing-voice')
  * if (skill) {
- *   const handle = await ws.documents.skills.instructions.open(skill.id)
- *   systemPrompt += handle.read()
+ *   const content = await ws.documents.skills.instructions.open(skill.id)
+ *   systemPrompt += content.read()
  * }
  *
  * // Editor binding—collaborative Y.Text editing
- * const handle = await ws.documents.skills.instructions.open(skill.id)
- * const ytext = handle.asText()
- * editor.bind(ytext)
+ * const content = await ws.documents.skills.instructions.open(skill.id)
+ * editor.bind(content.binding)
  * ```
  */
 export const skillsTable = defineTable(
@@ -55,6 +58,7 @@ export const skillsTable = defineTable(
 		_v: '1',
 	}),
 ).withDocument('instructions', {
+	content: plainText,
 	guid: 'id',
 	onUpdate: () => ({ updatedAt: Date.now() }),
 });
@@ -76,8 +80,8 @@ export const skillsTable = defineTable(
  *
  * // Read reference content
  * for (const ref of refs) {
- *   const handle = await ws.documents.references.content.open(ref.id)
- *   const markdown = handle.read()
+ *   const content = await ws.documents.references.content.open(ref.id)
+ *   const markdown = content.read()
  * }
  * ```
  */
@@ -90,6 +94,7 @@ export const referencesTable = defineTable(
 		_v: '1',
 	}),
 ).withDocument('content', {
+	content: plainText,
 	guid: 'id',
 	onUpdate: () => ({ updatedAt: Date.now() }),
 });

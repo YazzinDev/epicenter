@@ -26,8 +26,8 @@ import {
 import { createWorkspace, defineMutation } from '@epicenter/workspace';
 import {
 	createMarkdownMaterializer,
-	markdown,
 	prepareMarkdownFiles,
+	toMarkdown,
 	toSlugFilename,
 } from '@epicenter/workspace/extensions/materializer/markdown';
 import { createSqliteMaterializer } from '@epicenter/workspace/extensions/materializer/sqlite';
@@ -50,47 +50,48 @@ export const opensidian = createWorkspace(opensidianDefinition)
 			filePath: EPICENTER_PATHS.persistence(opensidianDefinition.id),
 		}),
 	)
-	.withWorkspaceExtension('materializer', (ctx) =>
-		createMarkdownMaterializer(ctx, { dir: MARKDOWN_DIR })
-			.table('files', {
+		createMarkdownMaterializer(ctx, { dir: MARKDOWN_DIR }).table('files', {
 				serialize: async (row) => {
 					if (row.type === 'folder') {
-						return markdown({
-							frontmatter: { id: row.id, name: row.name, type: 'folder' },
+						return {
 							filename: `${row.id}.md`,
-						});
+							content: toMarkdown({ id: row.id, name: row.name, type: 'folder' }),
+						};
 					}
 					let content: string | undefined;
 					try {
-						const handle = await ctx.documents.files.content.open(row.id);
-						content = handle.read();
+						const documentContent = await ctx.documents.files.content.open(
+							row.id,
+						);
+						content = documentContent.read();
 					} catch {
 						// Content doc not yet available (sync pending)
 					}
-					return markdown({
-						frontmatter: {
-							id: row.id,
-							name: row.name,
-							parentId: row.parentId,
-							size: row.size,
-							createdAt: row.createdAt,
-							updatedAt: row.updatedAt,
-							trashedAt: row.trashedAt,
-						},
-						body: content,
+					return {
 						filename: toSlugFilename(
 							row.name.replace(/\.md$/i, ''),
 							row.id,
 						),
-					});
+						content: toMarkdown(
+							{
+								id: row.id,
+								name: row.name,
+								parentId: row.parentId,
+								size: row.size,
+								createdAt: row.createdAt,
+								updatedAt: row.updatedAt,
+								trashedAt: row.trashedAt,
+							},
+							content,
+						),
+					};
 				},
 			}),
 	)
 	.withWorkspaceExtension('sqlite', (ctx) =>
 		createSqliteMaterializer(ctx, {
 			db: new Database(join(MATERIALIZER_DIR, 'opensidian.db')),
-		})
-			.table('files', { fts: ['name'] }),
+		}).table('files', { fts: ['name'] }),
 	)
 	.withWorkspaceExtension('unlock', createCliUnlock(sessions, SERVER_URL))
 	.withExtension(

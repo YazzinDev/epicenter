@@ -26,7 +26,7 @@
 
 import type { StandardJSONSchemaV1 } from '@standard-schema/spec';
 import type { TSchema } from 'typebox';
-import { iterateActions } from '../shared/actions.js';
+import { type Actions, iterateActions } from '../shared/actions.js';
 import { standardSchemaToJsonSchema } from '../shared/standard-schema.js';
 import type { AnyWorkspaceClient } from './types.js';
 
@@ -61,6 +61,7 @@ export type WorkspaceDescriptor = {
 	kv: Record<string, SchemaDescriptor>;
 	awareness: Record<string, SchemaDescriptor>;
 	actions: ActionDescriptor[];
+	extensions: Record<string, ActionDescriptor[]>;
 };
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -84,6 +85,23 @@ function describeSchemas(
 			},
 		]),
 	);
+}
+
+/** Walk an action tree and return an array of action descriptors. */
+function collectActionDescriptors(actions: Actions): ActionDescriptor[] {
+	const result: ActionDescriptor[] = [];
+	for (const [action, path] of iterateActions(actions)) {
+		result.push({
+			path,
+			type: action.type,
+			...(action.title !== undefined && { title: action.title }),
+			...(action.description !== undefined && {
+				description: action.description,
+			}),
+			...(action.input !== undefined && { input: action.input }),
+		});
+	}
+	return result;
 }
 
 /**
@@ -114,18 +132,18 @@ function describeSchemas(
 export function describeWorkspace(
 	client: AnyWorkspaceClient,
 ): WorkspaceDescriptor {
-	const actions: ActionDescriptor[] = [];
-	if (client.actions) {
-		for (const [action, path] of iterateActions(client.actions)) {
-			actions.push({
-				path,
-				type: action.type,
-				...(action.title !== undefined && { title: action.title }),
-				...(action.description !== undefined && {
-					description: action.description,
-				}),
-				...(action.input !== undefined && { input: action.input }),
-			});
+	const actions: ActionDescriptor[] = client.actions
+		? collectActionDescriptors(client.actions)
+		: [];
+
+	const extensions: Record<string, ActionDescriptor[]> = {};
+	if (client.extensions) {
+		for (const [extKey, extValue] of Object.entries(client.extensions)) {
+			if (extValue == null || typeof extValue !== 'object' || Array.isArray(extValue)) continue;
+			const extActions = collectActionDescriptors(extValue as Actions);
+			if (extActions.length > 0) {
+				extensions[extKey] = extActions;
+			}
 		}
 	}
 
@@ -135,5 +153,6 @@ export function describeWorkspace(
 		kv: describeSchemas(client.definitions.kv),
 		awareness: describeSchemas(client.definitions.awareness),
 		actions,
+		extensions,
 	};
 }

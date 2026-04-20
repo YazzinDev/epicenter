@@ -8,7 +8,7 @@
 		icon?: string;
 	};
 
-	const userPrinciples: Principle[] = [
+	const userPrinciples = [
 		{
 			title: 'Own your data',
 			description:
@@ -22,9 +22,9 @@
 			title: 'Preserve authenticity',
 			description: 'No middleman. Direct connection to your tools and models.',
 		},
-	];
+	] satisfies Principle[];
 
-	const developerPrinciples: Principle[] = [
+	const developerPrinciples = [
 		{
 			title: 'Free and open source',
 			description: 'Audit the code. Fork it. Make it yours.',
@@ -39,7 +39,7 @@
 			description:
 				'CRDTs, local-first architecture, and the bleeding edge of web tech.',
 		},
-	];
+	] satisfies Principle[];
 
 	type Props = {
 		class?: string;

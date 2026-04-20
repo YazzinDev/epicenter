@@ -34,7 +34,7 @@ export type MirrorDatabase = {
 	run(sql: string): MaybePromise<unknown>;
 
 	/** Prepare a reusable statement for repeated reads or writes. */
-	prepare(sql: string): MirrorStatement;
+	prepare(sql: string): MaybePromise<MirrorStatement>;
 };
 
 /**
@@ -55,10 +55,10 @@ export type MirrorStatement = {
 	run(...params: unknown[]): MaybePromise<unknown>;
 
 	/** Fetch all matching rows as plain objects. */
-	all(...params: unknown[]): MaybePromise<Record<string, unknown>[]>;
+	all(...params: unknown[]): MaybePromise<unknown[]>;
 
 	/** Fetch the first matching row, or null if none found. */
-	get(...params: unknown[]): MaybePromise<Record<string, unknown> | null>;
+	get(...params: unknown[]): MaybePromise<unknown>;
 };
 
 /**

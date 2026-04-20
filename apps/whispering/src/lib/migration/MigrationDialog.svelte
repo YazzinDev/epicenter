@@ -4,7 +4,7 @@
 	import * as Field from '@epicenter/ui/field';
 	import type { Snippet } from 'svelte';
 	import { migrationDialog } from './migration-dialog.svelte';
-	import { MOCK_RECORDING_COUNT, MOCK_TRANSFORMATION_COUNT } from './migration-test-data';
+	import { MOCK_RECORDING_COUNT } from './migration-test-data';
 
 	let { trigger }: { trigger?: Snippet<[{ props: Record<string, unknown> }]> } = $props();
 
@@ -97,7 +97,7 @@
 								>
 									{migrationDialog.isSeeding
 										? 'Seeding\u2026'
-										: `Seed ${MOCK_RECORDING_COUNT} Recordings + ${MOCK_TRANSFORMATION_COUNT} Transformations`}
+									: `Seed ${MOCK_RECORDING_COUNT} Recordings`}
 								</Button>
 								<Button
 									onclick={migrationDialog.clearIndexedDB}

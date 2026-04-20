@@ -43,7 +43,7 @@
 	import MarkTransformationActiveButton from './MarkTransformationActiveButton.svelte';
 	import TransformationRowActions from './TransformationRowActions.svelte';
 
-	const columns: ColumnDef<Transformation>[] = [
+	const columns = [
 		{
 			id: 'select',
 			header: ({ table }) =>
@@ -105,7 +105,7 @@
 				});
 			},
 		},
-	];
+	] satisfies ColumnDef<Transformation>[];
 
 	let sorting = createPersistedState({
 		key: 'whispering-transformations-data-table-sorting',

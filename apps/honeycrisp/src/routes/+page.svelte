@@ -1,8 +1,7 @@
 <script lang="ts">
 	import * as Resizable from '@epicenter/ui/resizable';
 	import { SidebarProvider } from '@epicenter/ui/sidebar';
-	import type { DocumentHandle } from '@epicenter/workspace';
-	import type * as Y from 'yjs';
+	import type { RichTextHandle } from '@epicenter/workspace';
 	import { workspace } from '$lib/client';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import NoteList from '$lib/components/NoteList.svelte';
@@ -10,35 +9,29 @@
 	import HoneycripEditor from '$lib/editor/Editor.svelte';
 	import { foldersState, notesState, viewState } from '$lib/state';
 
-	// ─── Document Handle ────────────────────────────────────────────────────
+	// ─── Document Content ───────────────────────────────────────────────────────────────────────────
 
-	let currentYXmlFragment = $state<Y.XmlFragment | null>(null);
-	let currentDocHandle = $state<DocumentHandle | null>(null);
+	let richTextContent = $state<RichTextHandle | null>(null);
 
 	$effect(() => {
 		const noteId = viewState.selectedNoteId;
 		if (!noteId) {
-			currentYXmlFragment = null;
-			currentDocHandle = null;
+			richTextContent = null;
 			return;
 		}
 
 		let cancelled = false;
-		workspace.documents.notes.body
-			.open(noteId)
-			.then((handle: DocumentHandle) => {
-				if (cancelled) return;
-				currentDocHandle = handle;
-				currentYXmlFragment = handle.asRichText();
-			});
+		workspace.documents.notes.body.open(noteId).then((openedContent) => {
+			if (cancelled) return;
+			richTextContent = openedContent;
+		});
 
 		return () => {
 			cancelled = true;
-			if (currentDocHandle) {
+			if (richTextContent) {
 				workspace.documents.notes.body.close(noteId);
 			}
-			currentYXmlFragment = null;
-			currentDocHandle = null;
+			richTextContent = null;
 		};
 	});
 </script>
@@ -81,10 +74,10 @@
 			</Resizable.Pane>
 			<Resizable.Handle />
 			<Resizable.Pane defaultSize={65} minSize={30} class="flex flex-col">
-				{#if viewState.selectedNote && currentYXmlFragment}
+				{#if viewState.selectedNote && richTextContent}
 					{#key viewState.selectedNoteId}
 						<HoneycripEditor
-							yxmlfragment={currentYXmlFragment}
+							yxmlfragment={richTextContent.binding}
 							onContentChange={(change) => notesState.updateNoteContent(change)}
 						/>
 					{/key}

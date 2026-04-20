@@ -1,7 +1,6 @@
 import { nanoid } from 'nanoid/non-secure';
 import { Ok, tryAsync } from 'wellcrafted/result';
 import { workspace } from '$lib/client';
-import { DbServiceLive } from '$lib/services/db';
 import { ToastServiceLive } from '$lib/services/toast';
 import {
 	type DbMigrationState,
@@ -83,7 +82,6 @@ function createMigrationDialog() {
 			const { data: migrationOutcome } = await tryAsync({
 				try: () =>
 					migrateDatabaseToWorkspace({
-						dbService: DbServiceLive,
 						workspace,
 						onProgress: addLog,
 					}),
@@ -145,7 +143,7 @@ function createMigrationDialog() {
 
 			if (state === null) {
 				// First check: probe for old data
-				const hasData = await probeForOldData(DbServiceLive);
+				const hasData = await probeForOldData(null);
 				if (!hasData) {
 					setPersistedState('done');
 					return;
@@ -179,7 +177,6 @@ function createMigrationDialog() {
 			const {
 				createMigrationTestData,
 				MOCK_RECORDING_COUNT,
-				MOCK_TRANSFORMATION_COUNT,
 			} = await import('./migration-test-data');
 			const testData = createMigrationTestData();
 
@@ -187,7 +184,6 @@ function createMigrationDialog() {
 				try: async () => {
 					await testData.seedIndexedDB({
 						recordingCount: MOCK_RECORDING_COUNT,
-						transformationCount: MOCK_TRANSFORMATION_COUNT,
 						onProgress: addLog,
 					});
 				},

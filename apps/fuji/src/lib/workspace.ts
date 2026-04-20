@@ -28,6 +28,7 @@ import {
 	defineTable,
 	defineWorkspace,
 	generateId,
+	richText,
 	type InferTableRow,
 } from '@epicenter/workspace';
 import { type } from 'arktype';
@@ -43,7 +44,6 @@ import type { Brand } from 'wellcrafted/brand';
  */
 export type EntryId = string & Brand<'EntryId'>;
 export const EntryId = type('string').pipe((s): EntryId => s as EntryId);
-
 
 // ─── Tables ───────────────────────────────────────────────────────────────────
 
@@ -96,17 +96,20 @@ const entriesTable = defineTable(
 		updatedAt: DateTimeString,
 		_v: '2',
 	}),
-).migrate((row) => {
-	switch (row._v) {
-		case 1:
-			return { ...row, rating: 0, _v: 2 };
-		case 2:
-			return row;
-	}
-}).withDocument('content', {
-	guid: 'id',
-	onUpdate: () => ({ updatedAt: DateTimeString.now() }),
-});
+)
+	.migrate((row) => {
+		switch (row._v) {
+			case 1:
+				return { ...row, rating: 0, _v: 2 };
+			case 2:
+				return row;
+		}
+	})
+	.withDocument('content', {
+		content: richText,
+		guid: 'id',
+		onUpdate: () => ({ updatedAt: DateTimeString.now() }),
+	});
 
 export type Entry = InferTableRow<typeof entriesTable>;
 
@@ -132,7 +135,7 @@ export function createFujiWorkspace() {
 			create: defineMutation({
 				title: 'Create Entry',
 				description:
-				'Create a new CMS entry with optional title, subtitle, type, tags, and rating.',
+					'Create a new CMS entry with optional title, subtitle, type, tags, and rating.',
 				input: Type.Object({
 					title: Type.Optional(Type.String({ description: 'Entry title' })),
 					subtitle: Type.Optional(
@@ -199,7 +202,10 @@ export function createFujiWorkspace() {
 						Type.Number({ description: 'Rating from 0–5 (0 = unrated)' }),
 					),
 					date: Type.Optional(
-						Type.Unsafe<DateTimeString>({ type: 'string', description: 'User-defined date for the entry' }),
+						Type.Unsafe<DateTimeString>({
+							type: 'string',
+							description: 'User-defined date for the entry',
+						}),
 					),
 				}),
 				handler: ({ id, ...fields }) => {
@@ -262,7 +268,10 @@ export function createFujiWorkspace() {
 					entries: Type.Array(
 						Type.Object({
 							title: Type.String({ description: 'Entry title' }),
-							date: Type.String({ description: 'ISO date string in workspace DateTimeString format' }),
+							date: Type.String({
+								description:
+									'ISO date string in workspace DateTimeString format',
+							}),
 						}),
 					),
 				}),

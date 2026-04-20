@@ -43,13 +43,9 @@ const recordings = defineTable(
 ).migrate((row) => {
 	switch (row._v) {
 		case 1: {
-			const title =
-				row.transcribedText.slice(0, 60).trim() ||
-				row.title ||
-				'Untitled Recording';
 			return {
 				id: row.id,
-				title,
+				title: row.title,
 				recordedAt: row.timestamp,
 				updatedAt: row.updatedAt,
 				transcript: row.transcribedText,

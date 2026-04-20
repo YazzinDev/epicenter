@@ -74,6 +74,7 @@
 	},
 	"devDependencies": {
 		"@types/diff": "^8.0.0",
+		"@types/mdast": "^4.0.4",
 		"@types/node": "catalog:",
 		"better-sqlite3": "^12.4.1",
 		"drizzle-kit": "catalog:",

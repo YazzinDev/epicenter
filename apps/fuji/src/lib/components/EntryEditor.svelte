@@ -14,7 +14,7 @@
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import { format } from 'date-fns';
-	import type * as Y from 'yjs';
+	import type { RichTextHandle } from '@epicenter/workspace';
 	import { goto } from '$app/navigation';
 	import { workspace } from '$lib/client';
 	import type { Entry } from '$lib/workspace';
@@ -40,24 +40,24 @@
 	// to remount on navigation, so entry.id never changes within an instance.
 	const id = entry.id;
 
-	let yxmlfragment = $state<Y.XmlFragment | null>(null);
+	let richTextContent = $state<RichTextHandle | null>(null);
 
 	$effect(() => {
 		let cancelled = false;
-		workspace.documents.entries.content.open(id).then((handle) => {
+		workspace.documents.entries.content.open(id).then((openedContent) => {
 			if (cancelled) {
 				workspace.documents.entries.content.close(id);
 				return;
 			}
-			yxmlfragment = handle.asRichText();
+			richTextContent = openedContent;
 		});
 
 		return () => {
 			cancelled = true;
-			if (yxmlfragment) {
+			if (richTextContent) {
 				workspace.documents.entries.content.close(id);
 			}
-			yxmlfragment = null;
+			richTextContent = null;
 		};
 	});
 
@@ -181,9 +181,9 @@
 	</div>
 
 	<!-- Editor body -->
-	{#if yxmlfragment}
+	{#if richTextContent}
 		<ProseMirrorEditor
-			{yxmlfragment}
+			yxmlfragment={richTextContent.binding}
 			onWordCountChange={(count) => (wordCount = count)}
 		/>
 	{:else}

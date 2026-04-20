@@ -2,69 +2,70 @@
 
 ## When to Read This
 
-Read when working with `.withDocument()` tables, timeline-backed document handles, editor bindings, or batching content mutations.
+Read when working with `.withDocument()` tables, content strategies, editor bindings, or batching content mutations.
 
 ## Document Content (Per-Row Y.Docs)
 
-Tables with `.withDocument()` create a content Y.Doc per row. Content is stored using a **timeline model**: a `Y.Array('timeline')` inside the Y.Doc, where each entry is a typed `Y.Map` supporting text, richtext, and sheet modes.
+Tables with `.withDocument()` create a content Y.Doc per row. `open()` returns the content object directly—fully typed by the content strategy.
+
+### Content Strategies
+
+Each strategy determines what `open()` returns:
+
+- **`plainText`** → `PlainTextHandle` with `read()`, `write()`, and `binding` (Y.Text)
+- **`richText`** → `RichTextHandle` with `read()`, `write()`, and `binding` (Y.XmlFragment)
+- **`timeline`** → `Timeline` with `read()`, `write()`, `asText()`, `asRichText()`, `asSheet()`, and more
 
 ### Reading and Writing Content
 
-Use `handle.read()`/`handle.write()` on the document handle:
+`open()` returns the content object directly:
 
 ```typescript
-const handle = await documents.open(fileId);
+const content = await documents.open(fileId);
 
-// Read content (timeline-backed)
-const text = handle.read();
+// Read content as string
+const text = content.read();
 
-// Write content (timeline-backed)
-handle.write('hello');
+// Write content (strategy handles transact internally)
+content.write('hello');
 
-// Editor binding — Y.Text (converts from other modes if needed)
-const ytext = handle.asText();
+// For plainText/richText — editor binding
+const ytext = content.binding;    // Y.Text (plainText)
+const fragment = content.binding;  // Y.XmlFragment (richText)
 
-// Richtext editor binding — Y.XmlFragment (converts if needed)
-const fragment = handle.asRichText();
-
-// Spreadsheet binding — SheetBinding (converts if needed)
-const { columns, rows } = handle.asSheet();
-
-// Current content mode
-handle.mode; // 'text' | 'richtext' | 'sheet' | undefined
-
-// Advanced timeline operations
-const tl = handle.timeline;
+// For timeline — mode switching
+content.asText();      // Y.Text for CodeMirror
+content.asRichText();  // Y.XmlFragment for ProseMirror
+content.asSheet();     // SheetBinding for spreadsheet
+content.currentType;   // 'text' | 'richtext' | 'sheet' | undefined
 ```
 
-For filesystem operations, `fs.content.read(fileId)` and `fs.content.write(fileId, data)` open the handle and delegate to these methods internally.
+For filesystem operations, `fs.readFile()` and `fs.writeFile()` open the content and delegate to `read()`/`write()` internally.
 
-### Batching Mutations
+### Batching Mutations (Timeline only)
 
-Use `handle.batch()` to group multiple mutations into a single Yjs transaction:
+Use `content.batch()` to group multiple mutations into a single Yjs transaction:
 
 ```typescript
-handle.batch(() => {
-  handle.write('hello');
+content.batch(() => {
+  content.write('hello');
   // ...other mutations
 });
 ```
 
-**Do NOT call `handle.ydoc.transact()` directly.** Use `handle.batch()` instead.
-
 ### Anti-Patterns
 
-**Do not access `handle.ydoc` for content operations:**
+**Do not access `content.ydoc` for content operations:**
 
 ```typescript
-// ❌ BAD: bypasses timeline abstraction
-const ytext = handle.ydoc.getText('content');
-handle.ydoc.transact(() => { ... });
+// ❌ BAD: bypasses content abstraction
+const ytext = content.ydoc.getText('content');
+content.ydoc.transact(() => { ... });
 
-// ✅ GOOD: use handle methods
-const ytext = handle.asText();
-const fragment = handle.asRichText();
-handle.batch(() => { ... });
+// ✅ GOOD: use content methods
+content.read();
+content.write('hello');
+content.binding;  // for editor binding (plainText/richText)
 ```
 
-`handle.ydoc` is an **escape hatch** for document extensions (persistence, sync providers) and tests. App code should never need it.
+`content.ydoc` (on Timeline) is an **escape hatch** for document extensions (persistence, sync providers) and tests. App code should never need it. This property is a follow-up candidate for removal.

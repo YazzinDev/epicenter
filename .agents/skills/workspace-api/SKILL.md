@@ -345,20 +345,22 @@ createWorkspace(definition)
 
 ### `connectWorkspace` (CLI/Script Shortcut)
 
-For server-side Bun scripts, `connectWorkspace` from `@epicenter/cli` handles the entire persistence → unlock → sync chain automatically:
+For server-side Bun scripts, `connectWorkspace` from `@epicenter/cli` handles the unlock → sync chain automatically. It is **ephemeral by design — no local persistence**, so a script can coexist with a long-running `epicenter start` daemon without fighting over the same SQLite file:
 
 ```typescript
 import { connectWorkspace } from '@epicenter/cli';
 import { createFujiWorkspace } from '@epicenter/fuji/workspace';
 
 const workspace = await connectWorkspace(createFujiWorkspace);
-// Ready. Authenticated. Syncing. Persistence loaded.
+// Ready. Authenticated. Syncing. Full doc downloaded from server.
 
 const entries = workspace.tables.entries.getAllValid();
 await workspace.dispose();
 ```
 
-Use `connectWorkspace` for one-off scripts and agent-written automation. Use `epicenter.config.ts` for long-running daemons and materializers that need custom workspace-specific extensions.
+Writes propagate through sync to the daemon, which owns the materializer (markdown, SQLite mirror, etc.).
+
+Use `connectWorkspace` for one-off scripts and agent-written automation. Use `epicenter.config.ts` for long-running daemons and materializers that need persistence and custom workspace-specific extensions.
 
 
 ## The `_v` Convention

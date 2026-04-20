@@ -24,7 +24,7 @@
  * ┌──────────────────────────┐    ┌──────────────────────────────┐
  * │  Workspace extensions    │    │  Document extensions          │
  * │  ExtensionContext         │    │  DocumentContext              │
- * │  (tables, kv, awareness) │    │  (timeline, ydoc)             │
+ * │  (tables, kv, awareness) │    │  (ydoc, extensions, awareness) │
  * └──────────────────────────┘    └──────────────────────────────┘
  * │                                    │
  * └────────────┬─────────────────────┘

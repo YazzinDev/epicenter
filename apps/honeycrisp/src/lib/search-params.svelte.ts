@@ -44,15 +44,15 @@ type SearchParams = {
 };
 
 /** Values that get elided from the URL — presence in the URL means non-default. */
-const DEFAULTS: SearchParams = {
+const DEFAULTS = {
 	folder: null,
 	note: null,
 	view: null,
 	sort: 'dateEdited',
 	q: '',
-};
+} satisfies SearchParams;
 
-const SORT_KEYS: SortBy[] = ['dateEdited', 'dateCreated', 'title'];
+const SORT_KEYS = ['dateEdited', 'dateCreated', 'title'] satisfies SortBy[];
 
 function createSearchParams() {
 	/**

@@ -23,13 +23,13 @@
 
 	// ─── TanStack Table (sort + filter model) ──────────────────────────────
 
-	const columns: ColumnDef<Entry>[] = [
+	const columns = [
 		{ id: 'title', accessorKey: 'title' },
 		{ id: 'rating', accessorKey: 'rating' },
 		{ id: 'date', accessorKey: 'date' },
 		{ id: 'createdAt', accessorKey: 'createdAt' },
 		{ id: 'updatedAt', accessorKey: 'updatedAt' },
-	];
+	] satisfies ColumnDef<Entry>[];
 
 	/** Multi-sort: non-date fields sort within date groups. */
 	const sorting = $derived(

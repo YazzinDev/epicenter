@@ -5,6 +5,9 @@
  *
  * Measures CRDT overhead ratios, per-row byte costs, size growth after updates,
  * and practical ceiling estimates for row counts.
+ *
+ * For comprehensive scaling measurements (timing, memory, encode/decode, multi-table),
+ * see `scaling-ceiling.bench.test.ts`.
  */
 
 import { describe, test } from 'bun:test';

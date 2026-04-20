@@ -39,10 +39,10 @@ type SearchParams = {
 };
 
 /** Values that get elided from the URL — presence means non-default. */
-const DEFAULTS: SearchParams = {
+const DEFAULTS = {
 	file: null,
 	chat: null,
-};
+} satisfies SearchParams;
 
 function createSearchParams() {
 	/**

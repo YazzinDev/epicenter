@@ -61,6 +61,7 @@
 // Action system
 export type { Action, Actions, Mutation, Query } from '../shared/actions.js';
 export {
+	ACTION_BRAND,
 	defineMutation,
 	defineQuery,
 	isAction,
@@ -92,6 +93,7 @@ export { KV_KEY, TableKey } from './ydoc-keys.js';
 export { defineKv } from './define-kv.js';
 export { defineTable } from './define-table.js';
 export { defineWorkspace } from './define-workspace.js';
+export { plainText, richText, timeline } from './strategies.js';
 
 // ════════════════════════════════════════════════════════════════════════════
 // Workspace Creation
@@ -129,12 +131,14 @@ export type {
 	AwarenessState,
 	// Base row type
 	BaseRow,
-	// Document types
-	DocumentClient,
+	// Content handle types
+	ContentHandle,
+	ContentStrategy,
 	DocumentConfig,
-	DocumentHandle,
 	Documents,
 	DocumentsHelper,
+	PlainTextHandle,
+	RichTextHandle,
 	// Extension types
 	ExtensionContext,
 	ExtensionFactory,
