@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
-use std::process::{Command, Stdio};
+use std::collections::HashMap;
+use std::io::Write;
+use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
+use lazy_static::lazy_static;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -7,6 +11,13 @@ use std::os::windows::process::CommandExt;
 // Windows process creation flag to prevent console window from appearing
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+lazy_static! {
+    /// Global map of spawned processes that we can interact with later.
+    /// This allows us to pipe input to long-running processes like FFmpeg
+    /// to trigger graceful shutdowns.
+    static ref PROCESSES: Mutex<HashMap<u32, Child>> = Mutex::new(HashMap::new());
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -101,16 +112,11 @@ pub async fn execute_command(command: String) -> Result<CommandOutput, String> {
     }
 }
 
-/// Spawn a child process without waiting for it to complete.
+/// Spawn a child process with piped stdin for interaction.
 ///
 /// Parses the command string into program and arguments, then spawns directly
-/// without using a shell wrapper. This approach provides:
-/// - Consistent behavior across all platforms
-/// - No shell injection vulnerabilities
-/// - Lower process overhead
-/// - PATH resolution still works via Command::new()
-///
-/// On Windows, also uses CREATE_NO_WINDOW flag to prevent console window flash (GitHub issue #815).
+/// without using a shell wrapper. Unlike `execute_command`, this returns immediately 
+/// with the process ID and stores the process handle in a global map for later interaction.
 ///
 /// # Arguments
 /// * `command` - The command to spawn as a string
@@ -138,6 +144,8 @@ pub async fn spawn_command(command: String) -> Result<u32, String> {
 
     let mut cmd = Command::new(&program);
     cmd.args(&args);
+    // Pipe stdin so we can send 'q' for graceful shutdown of ffmpeg
+    cmd.stdin(Stdio::piped());
 
     #[cfg(target_os = "windows")]
     {
@@ -148,7 +156,9 @@ pub async fn spawn_command(command: String) -> Result<u32, String> {
     match cmd.spawn() {
         Ok(child) => {
             let pid = child.id();
-            println!("[Rust] spawn_command: spawned process with PID={}", pid);
+            let mut processes = PROCESSES.lock().unwrap();
+            processes.insert(pid, child);
+            println!("[Rust] spawn_command: spawned process with PID={} and stored in map", pid);
             Ok(pid)
         }
         Err(e) => {
@@ -157,4 +167,57 @@ pub async fn spawn_command(command: String) -> Result<u32, String> {
             Err(error_msg)
         }
     }
+}
+
+/// Gracefully stop a process by sending 'q' to its stdin and waiting for it to exit.
+///
+/// This is specifically designed for FFmpeg, which flushes its buffers when it
+/// receives a 'q' character. If the process does not exit within 5 seconds,
+/// it will be forcefully terminated.
+///
+/// # Arguments
+/// * `pid` - The process ID of the child to stop
+#[tauri::command]
+pub async fn stop_command(pid: u32) -> Result<(), String> {
+    println!("[Rust] stop_command: attempting to gracefully stop PID={}", pid);
+
+    let mut child = {
+        let mut processes = PROCESSES.lock().unwrap();
+        processes.remove(&pid).ok_or_else(|| format!("Process {} not found in map", pid))?
+    };
+
+    // Try sending 'q' to stdin for ffmpeg
+    if let Some(mut stdin) = child.stdin.take() {
+        println!("[Rust] stop_command: sending 'q' to stdin for PID={}", pid);
+        let _ = stdin.write_all(b"q");
+        let _ = stdin.flush();
+        drop(stdin); // Closing stdin often triggers the process to read and exit
+    }
+
+    // Wait for the process to exit
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(5);
+
+    while start.elapsed() < timeout {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                println!("[Rust] stop_command: process {} exited gracefully with status: {}", pid, status);
+                return Ok(());
+            },
+            Ok(None) => {
+                // Still running, wait a bit
+                let _ = tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            Err(e) => {
+                println!("[Rust] stop_command: error waiting for process {}: {}", pid, e);
+                break;
+            }
+        }
+    }
+
+    // Fallback: If we reach here, graceful stop timed out. Force kill it.
+    println!("[Rust] stop_command: graceful stop timed out for PID={}, force killing", pid);
+    let _ = child.kill();
+    let _ = child.wait();
+    Ok(())
 }

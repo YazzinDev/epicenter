@@ -43,7 +43,7 @@ mock.module('$lib/services/desktop/fs', () => ({
 }));
 
 // Now import parseDevices and asDeviceIdentifier
-const { parseDevices } = await import('./ffmpeg');
+const { parseDevices, formatDeviceForPlatform } = await import('./ffmpeg');
 const { asDeviceIdentifier } = await import('$lib/services/types');
 
 describe('ffmpeg parseDevices (Windows)', () => {
@@ -54,21 +54,33 @@ describe('ffmpeg parseDevices (Windows)', () => {
 [dshow @ 00000164eeb0e380]   Alternative name "@device_pnp_\\\\?\\\\usb#vid_0000&pid_0000&mi_00#0&0000000&0&0000#{65e8773d-8f56-11d0-a3b9-00a0c9223196}\\global"
 [dshow @ 00000164eeb0e380] DirectShow audio devices
 [dshow @ 00000164eeb0e380] "External Microphone" (audio)
-[dshow @ 00000164eeb0e380]   Alternative name "@device_cm_{00000000-0000-0000-0000-000000000000}\\wave_{00000000-0000-0000-0000-000000000000}"
+[dshow @ 00000164eeb0e380]   Alternative name "@device_cm_{11111111-1111-1111-1111-111111111111}\\wave_{11111111-1111-1111-1111-111111111111}"
 [dshow @ 00000164eeb0e380] "Internal Microphone" (audio)
-[dshow @ 00000164eeb0e380]   Alternative name "@device_cm_{00000000-0000-0000-0000-000000000000}\\wave_{00000000-0000-0000-0000-000000000000}"
+[dshow @ 00000164eeb0e380]   Alternative name "@device_cm_{22222222-2222-2222-2222-222222222222}\\wave_{22222222-2222-2222-2222-222222222222}"
+[dshow @ 00000164eeb0e380] "Virtual Audio Device (With:Colon)" (audio)
+[dshow @ 00000164eeb0e380]   Alternative name "@device_cm_{33333333-3333-3333-3333-333333333333}\\Virtual Audio Device (With:Colon)"
 		`;
 
 		const devices = parseDevices(output);
 
-		expect(devices).toHaveLength(2);
+		expect(devices).toHaveLength(3);
 		expect(devices[0]).toEqual({
-			id: asDeviceIdentifier('External Microphone'),
+			id: asDeviceIdentifier(
+				'@device_cm_{11111111-1111-1111-1111-111111111111}\\wave_{11111111-1111-1111-1111-111111111111}',
+			),
 			label: 'External Microphone',
 		});
 		expect(devices[1]).toEqual({
-			id: asDeviceIdentifier('Internal Microphone'),
+			id: asDeviceIdentifier(
+				'@device_cm_{22222222-2222-2222-2222-222222222222}\\wave_{22222222-2222-2222-2222-222222222222}',
+			),
 			label: 'Internal Microphone',
+		});
+		expect(devices[2]).toEqual({
+			id: asDeviceIdentifier(
+				'@device_cm_{33333333-3333-3333-3333-333333333333}\\Virtual Audio Device (With:Colon)',
+			),
+			label: 'Virtual Audio Device (With:Colon)',
 		});
 	});
 
@@ -96,5 +108,22 @@ DirectShow audio devices
 		const devices = parseDevices(output);
 
 		expect(devices).toHaveLength(0);
+	});
+});
+
+describe('ffmpeg formatDeviceForPlatform (Windows)', () => {
+	it('should escape colons in device names', () => {
+		const deviceId = 'Audio Device (With:Colon)';
+		const formatted = formatDeviceForPlatform(deviceId);
+		expect(formatted).toBe('audio=Audio Device (With\\:Colon)');
+	});
+
+	it('should escape colons in alternative names', () => {
+		const deviceId =
+			'@device_cm_{33333333-3333-3333-3333-333333333333}\\Audio Device (With:Colon)';
+		const formatted = formatDeviceForPlatform(deviceId);
+		expect(formatted).toBe(
+			'audio=@device_cm_{33333333-3333-3333-3333-333333333333}\\Audio Device (With\\:Colon)',
+		);
 	});
 });
