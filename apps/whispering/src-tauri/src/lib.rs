@@ -21,7 +21,7 @@ pub mod graceful_shutdown;
 use graceful_shutdown::send_sigint;
 
 pub mod command;
-use command::{execute_command, spawn_command};
+use command::{execute_command, spawn_command, stop_command};
 
 pub mod markdown;
 use markdown::{count_markdown_files, delete_files_in_directory, read_markdown_files, write_markdown_files};
@@ -166,6 +166,7 @@ pub async fn run() {
         transcribe_audio_parakeet,
         transcribe_audio_moonshine,
         send_sigint,
+        stop_command,
         // Command execution (prevents console window flash on Windows)
         execute_command,
         spawn_command,

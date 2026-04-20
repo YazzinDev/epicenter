@@ -395,27 +395,15 @@ export const FfmpegRecorderServiceLive: RecorderService = {
 			description: 'Stopping FFmpeg recording...',
 		});
 
-		// Send SIGINT for graceful shutdown
-		const { error: killError } = await tryAsync({
-			try: async () => {
-				const signalResult = await sendSigint(session.pid);
-
-				if (!signalResult.success) {
-					// Fall back to SIGKILL if SIGINT fails
-					await child.kill();
-				} else {
-					// Schedule a force kill after 1 second (but don't wait)
-					setTimeout(() => {
-						child.kill().catch(() => {
-							// Process already exited, expected
-						});
-					}, 1000);
-				}
-			},
+		// Gracefully stop the process by sending 'q' to stdin and wait for it to exit
+		// This ensures file buffers are flushed before we try to read the file
+		const { error: stopError } = await tryAsync({
+			try: () => invoke('stop_command', { pid: session.pid }),
 			catch: (error) => RecorderError.StopFailed({ cause: error }),
 		});
 
-		if (killError) {
+		if (stopError) {
+			console.error('Error stopping recording:', stopError);
 			sendStatus({
 				title: '❌ Error Stopping Recording',
 				description:
@@ -552,10 +540,6 @@ export function parseDevices(output: string): Device[] {
 			// - Legacy: "Microphone Name" (audio)
 			// Supports both for broader FFmpeg version compatibility.
 			regex: /^\s*(?:\[dshow.*?\]\s+)?\s*"(.+?)"\s+\(audio\)/,
-			extractDevice: (match: RegExpMatchArray) => ({
-				id: asDeviceIdentifier(match[1] ?? ''),
-				label: match[1] ?? '',
-			}),
 		},
 		linux: {
 			// Linux ALSA format: hw:0,0 Device Name
@@ -569,9 +553,51 @@ export function parseDevices(output: string): Device[] {
 
 	// Select configuration based on platform (only called on desktop)
 	if (PLATFORM_TYPE === 'ios' || PLATFORM_TYPE === 'android') return [];
-	const config = platformConfig[PLATFORM_TYPE];
 
-	// Parse all devices
+	if (PLATFORM_TYPE === 'windows') {
+		const config = platformConfig.windows;
+		const lines = output.split('\n');
+		const devices: Device[] = [];
+
+		for (let i = 0; i < lines.length; i++) {
+			const line = lines[i];
+			if (!line) continue;
+
+			const match = line.match(config.regex);
+			if (match) {
+				const label = match[1] ?? '';
+				let id = label;
+
+				// Check if the next line is an alternative name (unique identifier)
+				// Windows:   Alternative name "@device_..."
+				if (i + 1 < lines.length) {
+					const nextLine = lines[i + 1];
+					if (nextLine && nextLine.includes('Alternative name')) {
+						const altMatch = nextLine.match(/Alternative name\s+"(.+?)"/);
+						if (altMatch?.[1]) {
+							id = altMatch[1];
+							i++; // Skip the next line as we've consumed it
+						}
+					}
+				}
+
+				devices.push({ id: asDeviceIdentifier(id), label });
+			}
+		}
+
+		// Deduplicate and return
+		const seenIds = new Set<string>();
+		return devices.filter((device) => {
+			if (seenIds.has(device.id)) return false;
+			seenIds.add(device.id);
+			return true;
+		});
+	}
+
+	const config = platformConfig[PLATFORM_TYPE];
+	if (!config || !('extractDevice' in config)) return [];
+
+	// Parse all devices for other platforms
 	const allDevices = output.split('\n').reduce<Device[]>((devices, line) => {
 		const match = line.match(config.regex);
 		if (match) devices.push(config.extractDevice(match));
@@ -596,8 +622,13 @@ export function formatDeviceForPlatform(deviceId: string) {
 	switch (PLATFORM_TYPE) {
 		case 'macos':
 			return `:${deviceId}`;
-		case 'windows':
-			return `audio=${deviceId}`;
+		case 'windows': {
+			// Escape colons in Windows device names because FFmpeg uses colon as a separator
+			// for dshow (video=VIDEO:audio=AUDIO). Even alternative names can contain colons
+			// if they include the friendly name.
+			const escapedDeviceId = deviceId.replace(/:/g, '\\:');
+			return `audio=${escapedDeviceId}`;
+		}
 		default:
 			return deviceId;
 	}
